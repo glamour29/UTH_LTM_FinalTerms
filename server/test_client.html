@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Test Socket</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+</head>
+<body>
+    <h1>Đang kết nối tới Server...</h1>
+    <script>
+        // Kết nối tới server của bạn
+        const socket = io("http://localhost:3000");
+
+        socket.on("connect", () => {
+            console.log("Đã kết nối thành công! ID của tôi là: " + socket.id);
+            document.querySelector("h1").innerText = "✅ Đã kết nối! ID: " + socket.id;
+        });
+
+        socket.on("disconnect", () => {
+            document.querySelector("h1").innerText = "❌ Mất kết nối!";
+        });
+    </script>
+</body>
+</html>
