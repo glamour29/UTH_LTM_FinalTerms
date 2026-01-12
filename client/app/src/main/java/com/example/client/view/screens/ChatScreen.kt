@@ -1,59 +1,114 @@
 package com.example.client.view.screens
 
-
-
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.client.viewmodel.ChatViewModel
 import com.example.client.view.components.MessageBubble
+import com.example.client.viewmodel.ChatViewModel
+import com.example.client.view.theme.YellowPrimary
+import com.example.client.view.theme.TextBlack
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreen(viewModel: ChatViewModel = viewModel()) {
+    // Collect state từ ViewModel
     val messages by viewModel.messages.collectAsState()
     var textState by remember { mutableStateOf("") }
+    val typingUser by viewModel.typingUser.collectAsState()
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        // Danh sách tin nhắn
-        LazyColumn(
-            modifier = Modifier.weight(1f),
-            reverseLayout = false // Chỉnh thành true nếu muốn tin mới nhất ở dưới cùng khi load data cũ
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Chat Room", color = TextBlack, fontWeight = FontWeight.Bold) },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = YellowPrimary
+                )
+            )
+        }
+    ) { paddingValues ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .background(Color.White)
         ) {
-            items(messages) { message ->
-                MessageBubble(
-                    message = message,
-                    isMq = message.senderId == viewModel.currentUserId
+            // Danh sách tin nhắn
+            LazyColumn(
+                modifier = Modifier.weight(1f),
+                contentPadding = PaddingValues(16.dp), // Padding tổng thể cho list
+                reverseLayout = false // Đặt true nếu muốn tin nhắn mới nhất ở dưới cùng tự động đẩy lên
+            ) {
+                items(messages) { message ->
+                    MessageBubble(
+                        message = message,
+                        isMe = message.senderId == viewModel.currentUserId,
+                        // Khi hiển thị tin nhắn của người khác, báo cho server biết mình đã xem
+                        onSeen = { viewModel.markAsSeen(message) }
+                    )
+                }
+            }
+
+            // [MỚI] Hiển thị Typing Indicator ngay trên ô nhập liệu
+            if (typingUser != null) {
+                Text(
+                    text = "Người khác đang soạn tin...",
+                    fontSize = 12.sp,
+                    color = Color.Gray,
+                    modifier = Modifier.padding(start = 16.dp, bottom = 4.dp)
                 )
             }
-        }
 
-        // Input nhập tin nhắn
-        Row(
-            modifier = Modifier
-                .padding(8.dp)
-                .fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            TextField(
-                value = textState,
-                onValueChange = { textState = it },
-                modifier = Modifier.weight(1f),
-                placeholder = { Text("Nhập tin nhắn...") }
-            )
-            Button(
-                onClick = {
-                    viewModel.sendMessage(textState)
-                    textState = ""
-                },
-                modifier = Modifier.padding(start = 8.dp)
+            // Khu vực nhập tin nhắn
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Gửi")
+                OutlinedTextField(
+                    value = textState,
+                    onValueChange = {
+                        textState = it
+                        viewModel.onUserInputChanged(it) // [MỚI] Gọi hàm báo đang gõ
+                    },
+                    modifier = Modifier.weight(1f),
+                    placeholder = { Text("Nhập tin nhắn...") },
+                    shape = RoundedCornerShape(24.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = YellowPrimary,
+                        unfocusedBorderColor = Color.Gray
+                    )
+                )
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                Button(
+                    onClick = {
+                        if (textState.isNotBlank()) {
+                            viewModel.sendMessage(textState)
+                            textState = ""
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = YellowPrimary,
+                        contentColor = TextBlack
+                    ),
+                    shape = RoundedCornerShape(50),
+                    modifier = Modifier.height(50.dp)
+                ) {
+                    Text("Gửi", fontWeight = FontWeight.Bold)
+                }
             }
         }
     }
