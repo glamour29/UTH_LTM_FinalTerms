@@ -4,28 +4,24 @@ const http = require('http');
 const { Server } = require("socket.io");
 const cors = require('cors');
 const connectDB = require('./src/config/db'); // Import file kết nối DB
-require('dotenv').config(); // Load biến môi trường từ .env
-
-// ---> 1. IMPORT ROUTES MỚI TẠO <---
-const authRoutes = require('./src/routes/authRoutes');
+const authRoutes = require('./src/routes/authRoutes'); // Import Routes API
+const socketAuthMiddleware = require('./src/middlewares/socketAuth'); // <--- [MỚI] Import Middleware bảo vệ Socket
+require('dotenv').config(); 
 
 const app = express();
 const server = http.createServer(app);
 
-// 2. Kết nối Database
+// 1. Kết nối Database
 connectDB();
 
-// 3. Cấu hình Middleware
-app.use(cors()); // Cho phép gọi API từ Android/Web
-app.use(express.json()); // Quan trọng: Để server đọc được dữ liệu JSON (req.body)
+// 2. Cấu hình Middleware HTTP
+app.use(cors()); 
+app.use(express.json()); 
 
-// ---> 4. KHAI BÁO ROUTES API <---
-// Mọi request bắt đầu bằng /api/auth sẽ chạy vào file authRoutes
-// Ví dụ: http://localhost:3000/api/auth/register
+// 3. Khai báo Routes API
 app.use('/api/auth', authRoutes);
 
-
-// 5. Khởi tạo Socket.IO
+// 4. Khởi tạo Socket.IO
 const io = new Server(server, {
     cors: {
         origin: "*", 
@@ -33,21 +29,28 @@ const io = new Server(server, {
     }
 });
 
-// 6. Lắng nghe sự kiện Socket (Tạm thời để test)
+// ---> [QUAN TRỌNG] KÍCH HOẠT BẢO VỆ SOCKET <---
+// Mọi kết nối socket phải có Token hợp lệ mới được đi qua
+io.use(socketAuthMiddleware);
+
+// 5. Lắng nghe sự kiện Socket (Chỉ chạy khi user đã qua bước kiểm tra Token)
 io.on("connection", (socket) => {
-    console.log("⚡ Có người vừa kết nối: " + socket.id);
+    // Lấy thông tin user từ biến socket.user (do middleware gắn vào)
+    console.log(`✅ User đã kết nối: ${socket.user.userId}`);
+    console.log(`   Socket ID: ${socket.id}`);
 
     socket.on("disconnect", () => {
-        console.log("❌ User đã thoát: " + socket.id);
+        console.log(`❌ User ${socket.user.userId} đã thoát.`);
     });
 });
 
-// 7. Chạy Server
+// 6. Chạy Server
 const PORT = process.env.PORT || 3000;
 
 server.listen(PORT, () => {
     console.log(`-----------------------------------`);
     console.log(`🚀 Server đang chạy tại: http://localhost:${PORT}`);
     console.log(`✅ API Auth sẵn sàng tại: http://localhost:${PORT}/api/auth/register`);
+    console.log(`🔐 Socket Security: ON (Yêu cầu Token)`);
     console.log(`-----------------------------------`);
 });

@@ -2,22 +2,54 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Test Socket</title>
+    <title>Test Socket Authentication</title>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+        body { font-family: sans-serif; padding: 20px; }
+        h1 { color: #333; }
+        .status { padding: 10px; border-radius: 5px; background: #f0f0f0; display: inline-block;}
+    </style>
 </head>
 <body>
-    <h1>Đang kết nối tới Server...</h1>
-    <script>
-        // Kết nối tới server của bạn
-        const socket = io("http://localhost:3000");
+    <h2>Trạng thái kết nối:</h2>
+    <div class="status">
+        <h1 id="msg">Đang kết nối...</h1>
+    </div>
+    
+    <p><i>Check Terminal của VS Code để xem Server có nhận diện được ID của User không nhé!</i></p>
 
-        socket.on("connect", () => {
-            console.log("Đã kết nối thành công! ID của tôi là: " + socket.id);
-            document.querySelector("h1").innerText = "✅ Đã kết nối! ID: " + socket.id;
+    <script>
+        // -----------------------------------------------------------
+        // ⚠️ BƯỚC QUAN TRỌNG: DÁN TOKEN CỦA BẠN VÀO DƯỚI ĐÂY
+        // (Copy từ Thunder Client lúc Login thành công)
+        // -----------------------------------------------------------
+        const MY_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OTY1MGQzNjdmZjg1NDY0N2QwODY2MjYiLCJpYXQiOjE3NjgyMzE0NTgsImV4cCI6MTc3MDgyMzQ1OH0.L-lvWHKoieDQRGvdQBPA5uE9dV8acsjpBsum95NGtI0"; 
+
+        // Kết nối tới server
+        const socket = io("http://localhost:3000", {
+            auth: {
+                token: MY_TOKEN // Gửi Token lên để xin phép vào
+            }
         });
 
+        // 1. Khi kết nối thành công
+        socket.on("connect", () => {
+            console.log("Kết nối thành công! ID Socket: " + socket.id);
+            document.getElementById("msg").innerText = "✅ Đã kết nối thành công!";
+            document.getElementById("msg").style.color = "green";
+        });
+
+        // 2. Khi bị lỗi kết nối (Ví dụ: Sai token, hết hạn token)
+        socket.on("connect_error", (err) => {
+            console.error("Lỗi kết nối:", err.message);
+            document.getElementById("msg").innerText = "⛔ Bị từ chối: " + err.message;
+            document.getElementById("msg").style.color = "red";
+        });
+
+        // 3. Khi mất kết nối
         socket.on("disconnect", () => {
-            document.querySelector("h1").innerText = "❌ Mất kết nối!";
+            document.getElementById("msg").innerText = "❌ Mất kết nối!";
+            document.getElementById("msg").style.color = "orange";
         });
     </script>
 </body>
