@@ -6,5 +6,7 @@ data class Message(
     val senderId: String = "",
     val content: String = "",
     val type: String = "TEXT", // TEXT, IMAGE, SYSTEM
-    val createdAt: String = ""
+    val createdAt: String = "",
+    val timestamp: Long,
+    var status: String = "sent"
 )
