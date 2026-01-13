@@ -1,16 +1,22 @@
 package com.example.client.viewmodel
 
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.util.Base64
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
 import com.example.client.model.data.Message
 import com.example.client.model.repository.SocketRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.launch
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
+import java.io.InputStream
 import java.util.UUID
+
 class ChatViewModel : ViewModel() {
     private val repository = SocketRepository()
 
@@ -53,7 +59,7 @@ class ChatViewModel : ViewModel() {
 
     fun sendMessage(content: String) {
         if (content.isNotBlank()) {
-            repository.sendMessage(content, currentRoomId, currentUserId)
+            repository.sendMessage(content, currentRoomId, currentUserId, "TEXT")
         }
     }
 
@@ -85,4 +91,29 @@ class ChatViewModel : ViewModel() {
             repository.socket.emit("mark_seen", data)
         }
     }
+    fun sendImage(context: Context, uri: Uri) {
+        val base64Image = uriToBase64(context, uri)
+        if (base64Image != null) {
+            // Gửi với type là IMAGE. Chuỗi base64 cần có prefix để hiển thị được
+            val content = "data:image/jpeg;base64,$base64Image"
+            repository.sendMessage(content, currentRoomId, currentUserId, "IMAGE")
+        }
+    }
+
+    // Hàm phụ trợ chuyển Uri sang Base64
+    private fun uriToBase64(context: Context, uri: Uri): String? {
+        return try {
+            val inputStream: InputStream? = context.contentResolver.openInputStream(uri)
+            val bitmap = BitmapFactory.decodeStream(inputStream)
+            val outputStream = ByteArrayOutputStream()
+            // Nén ảnh xuống định dạng JPEG, chất lượng 50% để giảm dung lượng
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 50, outputStream)
+            val byteArray = outputStream.toByteArray()
+            Base64.encodeToString(byteArray, Base64.NO_WRAP)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
 }

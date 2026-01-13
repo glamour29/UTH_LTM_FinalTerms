@@ -8,5 +8,5 @@ data class Message(
     val type: String = "TEXT", // TEXT, IMAGE, SYSTEM
     val createdAt: String = "",
     val timestamp: Long,
-    var status: String = "sent"
+    val status: String
 )

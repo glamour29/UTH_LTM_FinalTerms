@@ -1,15 +1,23 @@
 package com.example.client.view.screens
 
+
+
+import androidx.activity.compose.rememberLauncherForActivityResult // [MỚI] Để tạo launcher chọn ảnh
+import androidx.activity.result.PickVisualMediaRequest // [MỚI] Yêu cầu chọn media
+import androidx.activity.result.contract.ActivityResultContracts // [MỚI] Hợp đồng chọn ảnh
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons // [MỚI]
+import androidx.compose.material.icons.filled.Add // [MỚI] Icon dấu +
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext // [MỚI] Để lấy Context
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -18,7 +26,6 @@ import com.example.client.view.components.MessageBubble
 import com.example.client.viewmodel.ChatViewModel
 import com.example.client.view.theme.YellowPrimary
 import com.example.client.view.theme.TextBlack
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreen(viewModel: ChatViewModel = viewModel()) {
@@ -26,6 +33,14 @@ fun ChatScreen(viewModel: ChatViewModel = viewModel()) {
     val messages by viewModel.messages.collectAsState()
     var textState by remember { mutableStateOf("") }
     val typingUser by viewModel.typingUser.collectAsState()
+    val context = LocalContext.current // Lấy context để xử lý ảnh
+
+    // Bộ chọn ảnh (Photo Picker)
+    val pickMedia = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) {
+            viewModel.sendImage(context, uri)
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -76,6 +91,17 @@ fun ChatScreen(viewModel: ChatViewModel = viewModel()) {
                     .padding(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                IconButton(onClick = {
+                    pickMedia.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                }) {
+                    Icon(
+                        imageVector = Icons.Default.Add, // Hoặc thay bằng icon Image/Attach
+                        contentDescription = "Gửi ảnh",
+                        tint = YellowPrimary
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(4.dp))
                 OutlinedTextField(
                     value = textState,
                     onValueChange = {
