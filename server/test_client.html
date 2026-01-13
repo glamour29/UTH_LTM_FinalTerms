@@ -2,55 +2,85 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Test Socket Authentication</title>
+    <title>Test Chat 1-1</title>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <style>
         body { font-family: sans-serif; padding: 20px; }
-        h1 { color: #333; }
-        .status { padding: 10px; border-radius: 5px; background: #f0f0f0; display: inline-block;}
+        #messages { border: 1px solid #ccc; height: 300px; overflow-y: scroll; padding: 10px; margin-bottom: 10px; }
+        .my-msg { text-align: right; color: blue; }
+        .other-msg { text-align: left; color: green; }
     </style>
 </head>
 <body>
-    <h2>Trạng thái kết nối:</h2>
-    <div class="status">
-        <h1 id="msg">Đang kết nối...</h1>
-    </div>
+    <h2>💬 Test Chat Room</h2>
     
-    <p><i>Check Terminal của VS Code để xem Server có nhận diện được ID của User không nhé!</i></p>
+    <div>
+        <label>Room ID (Giả): </label>
+        <input type="text" id="roomId" value="65a1234567890abcdef12345">
+        <button onclick="joinRoom()">Vào phòng</button>
+    </div>
+    <hr>
+
+    <div id="messages"></div>
+
+    <input type="text" id="msgInput" placeholder="Nhập tin nhắn..." style="width: 70%;">
+    <button onclick="sendMessage()">Gửi</button>
 
     <script>
-        // -----------------------------------------------------------
-        // ⚠️ BƯỚC QUAN TRỌNG: DÁN TOKEN CỦA BẠN VÀO DƯỚI ĐÂY
-        // (Copy từ Thunder Client lúc Login thành công)
-        // -----------------------------------------------------------
-        const MY_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OTY1MGQzNjdmZjg1NDY0N2QwODY2MjYiLCJpYXQiOjE3NjgyMzE0NTgsImV4cCI6MTc3MDgyMzQ1OH0.L-lvWHKoieDQRGvdQBPA5uE9dV8acsjpBsum95NGtI0"; 
+        // ⚠️ DÁN TOKEN CỦA BẠN VÀO ĐÂY
+        const MY_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OTY2MzIxZmRjZTM2Mzg0ZjI4YWVlODUiLCJpYXQiOjE3NjgzMDUyNDIsImV4cCI6MTc3MDg5NzI0Mn0.kbOm-QoRK1zg1ky8eYgMna0P7Vo0j7C-nxSoEd98gnw"; 
 
-        // Kết nối tới server
         const socket = io("http://localhost:3000", {
-            auth: {
-                token: MY_TOKEN // Gửi Token lên để xin phép vào
-            }
+            auth: { token: MY_TOKEN }
         });
 
-        // 1. Khi kết nối thành công
+        let currentRoom = "";
+
         socket.on("connect", () => {
-            console.log("Kết nối thành công! ID Socket: " + socket.id);
-            document.getElementById("msg").innerText = "✅ Đã kết nối thành công!";
-            document.getElementById("msg").style.color = "green";
+            console.log("✅ Kết nối thành công!");
+            addLog("System", "Đã kết nối tới Server");
         });
 
-        // 2. Khi bị lỗi kết nối (Ví dụ: Sai token, hết hạn token)
-        socket.on("connect_error", (err) => {
-            console.error("Lỗi kết nối:", err.message);
-            document.getElementById("msg").innerText = "⛔ Bị từ chối: " + err.message;
-            document.getElementById("msg").style.color = "red";
+        // Hàm tham gia phòng
+        function joinRoom() {
+            const roomId = document.getElementById("roomId").value;
+            currentRoom = roomId;
+            socket.emit("join_room", roomId);
+            addLog("System", "Đang vào phòng: " + roomId);
+        }
+
+        // Nghe sự kiện nhận tin nhắn từ người khác
+        socket.on("receive_message", (data) => {
+            console.log("Tin mới:", data);
+            const sender = (data.senderId === socket.id) ? "Me" : data.senderId; // Chỉ là hiển thị tạm
+            addLog(sender, data.content);
         });
 
-        // 3. Khi mất kết nối
-        socket.on("disconnect", () => {
-            document.getElementById("msg").innerText = "❌ Mất kết nối!";
-            document.getElementById("msg").style.color = "orange";
-        });
+        // Hàm gửi tin
+        function sendMessage() {
+            const content = document.getElementById("msgInput").value;
+            if (!currentRoom) {
+                alert("Vui lòng bấm 'Vào phòng' trước!");
+                return;
+            }
+            
+            // Gửi lên server
+            socket.emit("send_message", {
+                roomId: currentRoom,
+                content: content
+            });
+
+            document.getElementById("msgInput").value = "";
+        }
+
+        // Hàm hiển thị log lên màn hình
+        function addLog(sender, msg) {
+            const div = document.createElement("div");
+            div.innerHTML = `<b>${sender}:</b> ${msg}`;
+            document.getElementById("messages").appendChild(div);
+        }
+
+        socket.on("connect_error", (err) => alert("Lỗi: " + err.message));
     </script>
 </body>
 </html>

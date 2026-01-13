@@ -4,7 +4,9 @@ require('dotenv').config(); // Load biến từ file .env
 
 const connectDB = async () => {
     try {
-        await mongoose.connect(process.env.MONGO_URI);
+        await mongoose.connect(process.env.MONGO_URI, {
+            dbName : 'chat-app_db'
+        });
         console.log('✅ MongoDB Connected Successfully!');
     } catch (error) {
         console.error('❌ MongoDB Connection Failed:', error.message);
