@@ -2,32 +2,33 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Test Chat 1-1</title>
+    <title>Test Chat 1-1 (Final)</title>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <style>
         body { font-family: sans-serif; padding: 20px; }
-        #messages { border: 1px solid #ccc; height: 300px; overflow-y: scroll; padding: 10px; margin-bottom: 10px; }
-        .my-msg { text-align: right; color: blue; }
-        .other-msg { text-align: left; color: green; }
+        #messages { border: 1px solid #ccc; height: 300px; overflow-y: scroll; padding: 10px; margin-bottom: 10px; background: #f9f9f9; }
+        .msg-item { margin-bottom: 5px; padding: 5px; border-radius: 5px; }
+        .my-msg { text-align: right; background-color: #dcf8c6; margin-left: 50px; }
+        .other-msg { text-align: left; background-color: #fff; border: 1px solid #ddd; margin-right: 50px; }
     </style>
 </head>
 <body>
-    <h2>💬 Test Chat Room</h2>
+    <h2>💬 Test Chat Realtime + Database</h2>
     
     <div>
-        <label>Room ID (Giả): </label>
-        <input type="text" id="roomId" value="65a1234567890abcdef12345">
-        <button onclick="joinRoom()">Vào phòng</button>
+        <label>Room ID (Thật): </label>
+        <input type="text" id="roomId" value="6967b3ce5046a04b65faa081" style="width: 300px;">
+        <button onclick="joinRoom()">1. Vào phòng</button>
     </div>
     <hr>
 
     <div id="messages"></div>
 
-    <input type="text" id="msgInput" placeholder="Nhập tin nhắn..." style="width: 70%;">
-    <button onclick="sendMessage()">Gửi</button>
+    <input type="text" id="msgInput" placeholder="Nhập tin nhắn..." style="width: 60%;">
+    <button onclick="sendMessage()">2. Gửi tin</button>
 
     <script>
-        // ⚠️ DÁN TOKEN CỦA BẠN VÀO ĐÂY
+        // Token của User AN
         const MY_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OTY2MzIxZmRjZTM2Mzg0ZjI4YWVlODUiLCJpYXQiOjE3NjgzMDUyNDIsImV4cCI6MTc3MDg5NzI0Mn0.kbOm-QoRK1zg1ky8eYgMna0P7Vo0j7C-nxSoEd98gnw"; 
 
         const socket = io("http://localhost:3000", {
@@ -37,8 +38,8 @@
         let currentRoom = "";
 
         socket.on("connect", () => {
-            console.log("✅ Kết nối thành công!");
-            addLog("System", "Đã kết nối tới Server");
+            console.log("✅ Kết nối Socket thành công!");
+            addLog("System", "Đã kết nối tới Server", "system");
         });
 
         // Hàm tham gia phòng
@@ -46,21 +47,33 @@
             const roomId = document.getElementById("roomId").value;
             currentRoom = roomId;
             socket.emit("join_room", roomId);
-            addLog("System", "Đang vào phòng: " + roomId);
+            addLog("System", "Đang vào phòng: " + roomId, "system");
         }
+
+        socket.on("joined_room", (roomId) => {
+            addLog("System", `✅ Đã vào phòng ${roomId} thành công!`, "system");
+        });
 
         // Nghe sự kiện nhận tin nhắn từ người khác
         socket.on("receive_message", (data) => {
-            console.log("Tin mới:", data);
-            const sender = (data.senderId === socket.id) ? "Me" : data.senderId; // Chỉ là hiển thị tạm
-            addLog(sender, data.content);
+            console.log("Tin mới nhận:", data);
+            
+            // So sánh ID người gửi với ID của mình (để chia trái/phải)
+            // Lưu ý: data.senderId là ID từ DB, còn socket.id là ID kết nối (khác nhau).
+            // Ở đây mình tạm hiển thị ID người gửi ra để check.
+            const isMe = data.senderId === "6966321fdce36384f28aee85"; // ID của An
+            
+            const senderName = isMe ? "Tôi" : "Người khác";
+            const className = isMe ? "my-msg" : "other-msg";
+
+            addMsgToScreen(senderName, data.content, className);
         });
 
         // Hàm gửi tin
         function sendMessage() {
             const content = document.getElementById("msgInput").value;
             if (!currentRoom) {
-                alert("Vui lòng bấm 'Vào phòng' trước!");
+                alert("❗ Vui lòng bấm 'Vào phòng' trước!");
                 return;
             }
             
@@ -76,11 +89,22 @@
         // Hàm hiển thị log lên màn hình
         function addLog(sender, msg) {
             const div = document.createElement("div");
-            div.innerHTML = `<b>${sender}:</b> ${msg}`;
+            div.innerHTML = `<i>${sender}: ${msg}</i>`;
             document.getElementById("messages").appendChild(div);
         }
 
-        socket.on("connect_error", (err) => alert("Lỗi: " + err.message));
+        function addMsgToScreen(sender, msg, className) {
+            const div = document.createElement("div");
+            div.className = `msg-item ${className}`;
+            div.innerHTML = `<b>${sender}:</b> ${msg}`;
+            document.getElementById("messages").appendChild(div);
+            // Tự động cuộn xuống dưới cùng
+            const container = document.getElementById("messages");
+            container.scrollTop = container.scrollHeight;
+        }
+
+        socket.on("connect_error", (err) => alert("Lỗi kết nối: " + err.message));
+        socket.on("error", (msg) => alert("Lỗi Server: " + msg));
     </script>
 </body>
 </html>
