@@ -4,7 +4,11 @@ const User = require('../models/User'); // Nhớ trỏ đúng đường dẫn đ
 exports.updateProfile = async (req, res) => {
   try {
     // 1. Lấy ID user từ Token (Middleware xác thực sẽ gắn user vào req)
-    const userId = req.user.userId; 
+    const userId = req.user.userId || req.user.id || req.user._id;
+
+    if (!userId) {
+        return res.status(401).json({ success: false, message: "Token không chứa ID User!" });
+    }
     
     // 2. Lấy dữ liệu Kiên gửi lên
     const { fullName, avatar } = req.body;

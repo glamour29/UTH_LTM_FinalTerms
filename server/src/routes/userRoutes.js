@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const userController = require('../controllers/userController');
-const authMiddleware = require('../middleware/authMiddleware'); // 👈 Cần cái này để check Token
+const authMiddleware = require('../middlewares/authHTTP'); // 👈 Cần cái này để check Token
 
 // Định nghĩa route: PUT /api/users/update
 // authMiddleware sẽ chặn nếu không có Token
