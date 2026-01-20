@@ -1,10 +1,11 @@
-// File: `app/src/main/java/com/example/client/viewmodel/ChatViewModel.kt`
 package com.example.client.viewmodel
 
 import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.client.model.CreateGroupRequest
+import com.example.client.model.RetrofitClient
 import com.example.client.model.data.ChatRoom
 import com.example.client.model.data.Message
 import com.example.client.model.data.User
@@ -16,36 +17,29 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import java.util.UUID
 
-/**
- * ViewModel shim that provides the methods and properties the UI expects.
- * This is intentionally simple and delegates to the SocketRepository stub.
- */
 class ChatViewModel(
     private val repository: SocketRepository = SocketRepository()
 ) : ViewModel() {
 
-    // Public flows from repository
-    val users: StateFlow<List<User>> = repository.users
-    val rooms: StateFlow<List<ChatRoom>> = repository.rooms
+    private val apiService = RetrofitClient.instance
 
-    // Current logged-in user id and auth token
+    val users: StateFlow<List<User>> = repository.users
+    private val _rooms = MutableStateFlow<List<ChatRoom>>(emptyList())
+    val rooms: StateFlow<List<ChatRoom>> = _rooms
+
     var currentUserId: String = ""
     private var authToken: String = ""
 
-    // Active room and messages for that room
     private val _messages = MutableStateFlow<List<Message>>(emptyList())
     val messages: StateFlow<List<Message>> = _messages
 
     private var activeRoomId: String = ""
-    // currentRoomId is used by UI; keep a public copy
     var currentRoomId: String = ""
 
-    // typing user indicator (username or user id) - null when nobody typing
     private val _typingUser = MutableStateFlow<String?>(null)
     val typingUser: StateFlow<String?> = _typingUser
 
     init {
-        // Observe repository messages map and update active messages when it changes
         viewModelScope.launch(Dispatchers.IO) {
             repository.messagesByRoom.collectLatest { map ->
                 if (activeRoomId.isNotBlank()) {
@@ -54,25 +48,69 @@ class ChatViewModel(
                 }
             }
         }
+        
+        // Listen for room updates from socket too
+        viewModelScope.launch {
+            repository.rooms.collect { socketRooms ->
+                if (socketRooms.isNotEmpty()) {
+                    _rooms.value = socketRooms
+                }
+            }
+        }
     }
 
-    // Connect with token (auth)
     fun connect(token: String, userId: String) {
         authToken = token
         currentUserId = userId
         repository.connect(token)
+        fetchRooms()
+    }
+
+    fun fetchRooms() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val response = apiService.getRooms("Bearer $authToken")
+                _rooms.value = response
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    fun searchUsers(query: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val searchResults = apiService.searchUsers("Bearer $authToken", query)
+                // Update users list with search results if needed, 
+                // or handle as a separate state
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    fun createGroup(name: String, memberIds: List<String>): ChatRoom {
+        // We return a temporary room for UI, then update when API responds
+        val tempRoom = ChatRoom(id = "temp_${UUID.randomUUID()}", name = name, isGroup = true, memberIds = memberIds)
+        
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val newRoom = apiService.createGroup("Bearer $authToken", CreateGroupRequest(name, memberIds))
+                fetchRooms() // Refresh list
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+        return tempRoom
     }
 
     fun disconnect() {
         repository.disconnect()
     }
 
-    // Set active room and update messages flow
     fun setActiveRoom(roomId: String, roomName: String) {
         activeRoomId = roomId
-        // Ask repository to sync messages for this room
         repository.syncMessages(roomId)
-        // If repository already has messages, they'll be reflected through the collector
     }
 
     fun markRoomAsRead(roomId: String) {
@@ -80,12 +118,10 @@ class ChatViewModel(
     }
 
     fun sendImage(context: Context, uri: Uri) {
-        // Convert to a placeholder string or call repository to upload/send
         val placeholder = "image:$uri"
         sendMessage(placeholder)
     }
 
-    // Join room by id (sets currentRoomId and asks repository to join/sync)
     fun joinRoom(roomId: String) {
         currentRoomId = roomId
         activeRoomId = roomId
@@ -93,25 +129,24 @@ class ChatViewModel(
         repository.syncMessages(roomId)
     }
 
+    fun joinExistingRoom(room: ChatRoom) {
+        joinRoom(room.id)
+    }
+
     fun markAsSeen(message: Message) {
-        // Emit message_seen event
         try {
             repository.sendMessage(message.content, message.roomId, message.senderId, message.type)
-            // In a real backend you'd emit a separate message_seen event; here we reuse send
         } catch (_: Exception) { }
     }
 
     fun onUserInputChanged(text: String) {
-        // Could emit typing events via repository.socket - stub no-op
         repository.sendStopTyping(activeRoomId)
     }
 
-    // UI calls sendMessage with a single content param; use activeRoomId and currentUserId
     fun sendMessage(content: String) {
         if (activeRoomId.isBlank() || currentUserId.isBlank()) return
         val type = if (content.startsWith("data:image") || content.startsWith("image:")) "image" else "text"
 
-        // create temp message locally
         val tempId = "local_${UUID.randomUUID()}"
         val tempMessage = Message(
             id = tempId,
@@ -124,18 +159,14 @@ class ChatViewModel(
             status = "sending"
         )
 
-        // append to local list immediately
         val current = _messages.value.toMutableList()
         current.add(tempMessage)
         _messages.value = current
 
-        // send to repository; repository will append real message when server acks
         viewModelScope.launch(Dispatchers.IO) {
             repository.sendMessage(content, activeRoomId, currentUserId, type)
         }
     }
-
-    // Room and member management helpers expected by UI
 
     fun leaveRoom(roomId: String) = repository.leaveRoom(roomId)
     fun pinRoom(roomId: String) = repository.pinRoom(roomId)
@@ -150,13 +181,7 @@ class ChatViewModel(
     fun renameGroup(roomId: String, newName: String) = repository.renameGroup(roomId, newName)
     fun transferAdmin(roomId: String, newAdminId: String) = repository.transferAdmin(roomId, newAdminId)
 
-    // Start or get a private room with a user
     fun startPrivateChat(user: User): ChatRoom {
         return repository.ensurePrivateRoom(currentUserId, user)
-    }
-
-    // Create group (UI calls without currentUserId)
-    fun createGroup(name: String, memberIds: List<String>): ChatRoom {
-        return repository.createGroup(name, memberIds, currentUserId)
     }
 }

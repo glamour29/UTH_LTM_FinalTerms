@@ -7,6 +7,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -25,6 +26,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.client.model.data.Message
+import com.example.client.model.data.User
+import com.example.client.model.data.ChatRoom
 import com.example.client.view.components.MessageBubble
 import com.example.client.view.theme.*
 import com.example.client.viewmodel.ChatViewModel
@@ -40,9 +43,16 @@ fun ChatScreenImprovedScreen(
     onBack: () -> Unit
 ) {
     val messages by viewModel.messages.collectAsState()
+    val rooms by viewModel.rooms.collectAsState()
+    val allUsers by viewModel.users.collectAsState()
+    
+    val currentRoom = rooms.find { it.id == roomId }
+    
     var textState by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
     val context = LocalContext.current
+    
+    var showGroupManage by remember { mutableStateOf(false) }
 
     LaunchedEffect(roomId) {
         viewModel.setActiveRoom(roomId, roomName)
@@ -67,8 +77,14 @@ fun ChatScreenImprovedScreen(
     Scaffold(
         topBar = {
             ChatTopBar(
-                roomName = roomName,
-                onBack = onBack
+                roomName = currentRoom?.name ?: roomName,
+                isGroup = currentRoom?.isGroup == true,
+                onBack = onBack,
+                onMoreClick = {
+                    if (currentRoom?.isGroup == true) {
+                        showGroupManage = true
+                    }
+                }
             )
         }
     ) { paddingValues ->
@@ -112,12 +128,30 @@ fun ChatScreenImprovedScreen(
             )
         }
     }
+
+    if (showGroupManage && currentRoom != null) {
+        GroupManagementDialog(
+            room = currentRoom,
+            allUsers = allUsers,
+            onDismiss = { showGroupManage = false },
+            onAddMember = { userId -> viewModel.addMember(roomId, userId) },
+            onKickMember = { userId -> viewModel.kickMember(roomId, userId) },
+            onRename = { newName -> viewModel.renameGroup(roomId, newName) },
+            onTransferAdmin = { userId -> viewModel.transferAdmin(roomId, userId) },
+            onLeave = { 
+                viewModel.leaveRoom(roomId)
+                onBack()
+            }
+        )
+    }
 }
 
 @Composable
 private fun ChatTopBar(
     roomName: String,
-    onBack: () -> Unit
+    isGroup: Boolean,
+    onBack: () -> Unit,
+    onMoreClick: () -> Unit
 ) {
     TopAppBar(
         title = {
@@ -125,14 +159,14 @@ private fun ChatTopBar(
                 Surface(
                     modifier = Modifier.size(40.dp),
                     shape = CircleShape,
-                    color = TealLight
+                    color = if (isGroup) Color(0xFFE0F2F1) else TealLight
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        Text(
-                            text = roomName.firstOrNull()?.uppercase() ?: "C",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = TealPrimary
+                        Icon(
+                            if (isGroup) Icons.Default.Group else Icons.Default.Person,
+                            contentDescription = null,
+                            tint = TealPrimary,
+                            modifier = Modifier.size(20.dp)
                         )
                     }
                 }
@@ -151,8 +185,12 @@ private fun ChatTopBar(
             }
         },
         actions = {
-            IconButton(onClick = { /* More options */ }) {
-                Icon(Icons.Default.MoreVert, "More", tint = MaterialTheme.colorScheme.onSurface)
+            IconButton(onClick = onMoreClick) {
+                Icon(
+                    if (isGroup) Icons.Default.Settings else Icons.Default.MoreVert, 
+                    "Options", 
+                    tint = MaterialTheme.colorScheme.onSurface
+                )
             }
         },
         colors = TopAppBarDefaults.topAppBarColors(
@@ -160,6 +198,131 @@ private fun ChatTopBar(
             titleContentColor = MaterialTheme.colorScheme.onSurface
         )
     )
+}
+
+@Composable
+fun GroupManagementDialog(
+    room: ChatRoom,
+    allUsers: List<User>,
+    onDismiss: () -> Unit,
+    onAddMember: (String) -> Unit,
+    onKickMember: (String) -> Unit,
+    onRename: (String) -> Unit,
+    onTransferAdmin: (String) -> Unit,
+    onLeave: () -> Unit
+) {
+    var showAddUser by remember { mutableStateOf(false) }
+    var showRename by remember { mutableStateOf(false) }
+    var newGroupName by remember { mutableStateOf(room.name) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { 
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Cài đặt nhóm", modifier = Modifier.weight(1f))
+                IconButton(onClick = { showRename = true }) {
+                    Icon(Icons.Default.Edit, "Sửa tên", modifier = Modifier.size(20.dp))
+                }
+            }
+        },
+        text = {
+            Column(modifier = Modifier.heightIn(max = 450.dp)) {
+                if (showRename) {
+                    OutlinedTextField(
+                        value = newGroupName,
+                        onValueChange = { newGroupName = it },
+                        label = { Text("Tên nhóm mới") },
+                        modifier = Modifier.fillMaxWidth(),
+                        trailingIcon = {
+                            IconButton(onClick = { 
+                                onRename(newGroupName)
+                                showRename = false
+                            }) {
+                                Icon(Icons.Default.Check, null, tint = TealPrimary)
+                            }
+                        }
+                    )
+                    Spacer(Modifier.height(16.dp))
+                }
+
+                Text("Thành viên (${room.memberIds.size})", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                Spacer(Modifier.height(8.dp))
+                LazyColumn(modifier = Modifier.weight(1f)) {
+                    items(room.memberIds) { memberId ->
+                        val user = allUsers.find { it.id == memberId }
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                user?.fullName?.ifBlank { user?.username } ?: memberId, 
+                                fontSize = 14.sp,
+                                modifier = Modifier.weight(1f)
+                            )
+                            // Nút Chuyển Admin
+                            IconButton(onClick = { onTransferAdmin(memberId) }) {
+                                Icon(Icons.Default.Star, "Admin", tint = Color(0xFFFFD700), modifier = Modifier.size(18.dp))
+                            }
+                            // Nút Xoá khỏi nhóm
+                            IconButton(onClick = { onKickMember(memberId) }) {
+                                Icon(Icons.Default.PersonRemove, "Kick", tint = Color.Red, modifier = Modifier.size(18.dp))
+                            }
+                        }
+                    }
+                }
+                
+                HorizontalDivider(Modifier.padding(vertical = 8.dp))
+                
+                TextButton(
+                    onClick = { showAddUser = true },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.PersonAdd, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Thêm thành viên")
+                }
+                
+                TextButton(
+                    onClick = onLeave,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.textButtonColors(contentColor = Color.Red)
+                ) {
+                    Icon(Icons.Default.ExitToApp, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Rời nhóm")
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Đóng") }
+        }
+    )
+
+    if (showAddUser) {
+        val nonMembers = allUsers.filter { !room.memberIds.contains(it.id) }
+        AlertDialog(
+            onDismissRequest = { showAddUser = false },
+            title = { Text("Thêm thành viên") },
+            text = {
+                LazyColumn(modifier = Modifier.heightIn(max = 300.dp)) {
+                    items(nonMembers) { user ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().clickable { 
+                                onAddMember(user.id)
+                                showAddUser = false
+                            }.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(user.fullName.ifBlank { user.username })
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showAddUser = false }) { Text("Huỷ") }
+            }
+        )
+    }
 }
 
 @Composable

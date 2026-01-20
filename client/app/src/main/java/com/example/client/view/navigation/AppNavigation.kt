@@ -1,8 +1,10 @@
-// kotlin
 package com.example.client.view.navigation
 
+import android.content.Context
 import android.net.Uri
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -16,8 +18,24 @@ import com.example.client.viewmodel.ChatViewModel
 fun AppNavigation() {
     val navController = rememberNavController()
     val chatViewModel: ChatViewModel = viewModel()
+    val context = LocalContext.current
 
-    NavHost(navController = navController, startDestination = "users") {
+    // Giả sử Token đã được lưu sẵn (ví dụ từ module Login của người khác)
+    val sharedPref = context.getSharedPreferences("ChatAppPrefs", Context.MODE_PRIVATE)
+    val savedToken = sharedPref.getString("TOKEN", null)
+    val savedUserId = sharedPref.getString("USER_ID", null)
+
+    // Luôn bắt đầu từ màn hình users
+    val startDest = "users"
+
+    // Tự động kết nối Socket nếu có thông tin
+    LaunchedEffect(savedToken, savedUserId) {
+        if (savedToken != null && savedUserId != null) {
+            chatViewModel.connect(savedToken, savedUserId)
+        }
+    }
+
+    NavHost(navController = navController, startDestination = startDest) {
 
         composable("users") {
             UsersScreenImproved(
@@ -44,7 +62,7 @@ fun AppNavigation() {
                 onAddContact = { navController.navigate("add_contact") },
                 onCreateGroup = { groupName, memberIds ->
                     val room = chatViewModel.createGroup(groupName, memberIds)
-                    navController.navigate("group/${room.id}/${Uri.encode(room.name)}/${room.memberIds.size}")
+                    navController.navigate("group/${room.id}/${Uri.encode(room.name)}/${memberIds.size + 1}")
                 }
             )
         }
@@ -83,7 +101,6 @@ fun AppNavigation() {
         ) { backStackEntry ->
             val roomId = backStackEntry.arguments?.getString("roomId") ?: return@composable
             val roomName = backStackEntry.arguments?.getString("roomName") ?: "Group"
-            // Use the same screen composable that was renamed to ChatScreenImprovedScreen.
             ChatScreenImprovedScreen(
                 roomId = roomId,
                 roomName = Uri.decode(roomName),
