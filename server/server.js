@@ -42,14 +42,14 @@ io.use(socketAuthMiddleware);
 
 // 6. Lắng nghe sự kiện Socket
 io.on("connection", (socket) => {
-    console.log(`✅ User đã kết nối: ${socket.user.userId}`);
-    console.log(`   Socket ID: ${socket.id}`);
+    console.log(`[Socket] User connected: ${socket.user.userId}`);
+    console.log(`[Socket] Socket ID: ${socket.id}`);
 
     // Kích hoạt tính năng Chat
     chatSocket(io, socket);
 
     socket.on("disconnect", () => {
-        console.log(`❌ User ${socket.user.userId} đã thoát.`);
+        console.log(`[Socket] User ${socket.user.userId} disconnected`);
     });
 });
 
@@ -57,9 +57,9 @@ io.on("connection", (socket) => {
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`-----------------------------------`);
-    console.log(`🚀 Server đang chạy tại: http://localhost:${PORT}`);
-    console.log(`✅ API Auth sẵn sàng tại: http://localhost:${PORT}/api/auth/register`);
-    console.log(`✅ API Rooms sẵn sàng tại: http://localhost:${PORT}/api/rooms`);
-    console.log(`🔐 Socket Security: ON`);
+    console.log(`[Server] Running at: http://localhost:${PORT}`);
+    console.log(`[API] Auth: http://localhost:${PORT}/api/auth/register`);
+    console.log(`[API] Rooms: http://localhost:${PORT}/api/rooms`);
+    console.log(`[Security] Socket Auth: ON`);
     console.log(`-----------------------------------`);
 });
