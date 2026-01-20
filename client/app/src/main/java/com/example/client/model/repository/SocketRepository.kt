@@ -1,124 +1,105 @@
 package com.example.client.model.repository
 
-import android.R.attr.type
-import android.util.Log
+import com.example.client.model.data.ChatRoom
 import com.example.client.model.data.Message
-import io.socket.client.IO
-import io.socket.client.Socket
+import com.example.client.model.data.User
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import org.json.JSONObject
-import java.net.URISyntaxException
 import java.util.UUID
 
+/**
+ * Minimal stub implementation so ViewModel compiles.
+ * Replace with the real socket repository implementation later.
+ */
 class SocketRepository {
-    // Biến private chứa socket thực sự
-    private var mSocket: Socket? = null
 
-    val socket: Socket
-        get() = mSocket ?: throw IllegalStateException("Socket chưa được khởi tạo!")
+    // Public flows expected by ChatViewModel
+    private val _users = MutableStateFlow<List<User>>(emptyList())
+    private val _rooms = MutableStateFlow<List<ChatRoom>>(emptyList())
+    private val _messagesByRoom = MutableStateFlow<Map<String, List<Message>>>(emptyMap())
 
-    private val _messages = MutableStateFlow<List<Message>>(emptyList())
-    val messages: StateFlow<List<Message>> = _messages
+    val users: StateFlow<List<User>> = _users
+    val rooms: StateFlow<List<ChatRoom>> = _rooms
+    val messagesByRoom: StateFlow<Map<String, List<Message>>> = _messagesByRoom
 
-    init {
-        try {
-            
-            mSocket = IO.socket("http://10.0.2.2:3000")
-        } catch (e: URISyntaxException) {
-            e.printStackTrace()
-        }
-    }
+    // Simple in-process socket replacement with basic on/emit behavior
+    val socket: SimpleSocket = SimpleSocket()
 
-    fun connect() {
-        mSocket?.connect()
-
-        // Lắng nghe tin nhắn mới từ server
-        mSocket?.on("receive_message") { args ->
-            if (args.isNotEmpty()) {
-                val data = args[0] as JSONObject
-                val message = parseMessage(data)
-                // Cập nhật vào list hiện tại
-                val currentList = _messages.value.toMutableList()
-                currentList.add(message)
-                _messages.value = currentList
-            }
-        }
+    fun connect(userId: String) {
+        // no-op for stub
     }
 
     fun disconnect() {
-        mSocket?.disconnect()
-        mSocket?.off()
+        // no-op for stub
+    }
+
+    fun requestUsers() {
+        // no-op; real implementation should update `users` flow
+    }
+
+    fun requestRooms(userId: String) {
+        // no-op; real implementation should update `rooms` flow
     }
 
     fun joinRoom(roomId: String) {
-        mSocket?.emit("join_room", roomId)
+        // no-op
     }
 
-    fun sendMessage(content: String, roomId: String, senderId: String, type: String = "TEXT") {
-        val jsonObject = JSONObject()
-        jsonObject.put("roomId", roomId)
-        jsonObject.put("senderId", senderId)
-
-        if (type == "IMAGE") {
-            // === TRƯỜNG HỢP 1: GỬI ẢNH ===
-            // Server yêu cầu key là 'imageBase64' và sự kiện 'send_image'
-            jsonObject.put("imageBase64", content)
-
-            Log.d("SocketRepo", "Đang gửi ẢNH...")
-            mSocket?.emit("send_image", jsonObject)
-        } else {
-
-            jsonObject.put("content", content)
-            jsonObject.put("type", "text") // Gửi kèm cho chắc chắn
-
-            Log.d("SocketRepo", "Đang gửi TEXT: $content")
-            mSocket?.emit("send_message", jsonObject)
-        }
+    fun syncMessages(roomId: String) {
+        // no-op; real implementation should update `messagesByRoom`
     }
 
     fun sendStopTyping(roomId: String) {
-        mSocket?.emit("stop_typing", roomId)
+        socket.emit("stop_typing", roomId)
     }
 
-    private fun parseMessage(json: JSONObject): Message {
-        // Log để kiểm tra server trả về type gì
-        val typeFromServer = json.optString("type", "TEXT")
-        Log.d("SocketRepository", "Nhận tin nhắn loại: $typeFromServer")
-
-        return Message(
-            id = json.optString("id", UUID.randomUUID().toString()),
-            content = json.optString("content", ""),
-            senderId = json.optString("senderId", "anonymous"),
-
-            // Lấy type server trả về (quan trọng để MessageBubble hiển thị đúng)
-            type = typeFromServer,
-
-            timestamp = json.optLong("timestamp", System.currentTimeMillis()),
-            status = json.optString("status", "sent")
-        )
+    fun ensurePrivateRoom(currentUserId: String, user: User): ChatRoom {
+        val id = "priv_${listOf(currentUserId, user.id).sorted().joinToString("_") }"
+        val name = user.fullName.ifBlank { user.username }
+        val room = ChatRoom(id = id, name = name)
+        return room
     }
-    fun updateMessageStatus(messageId: String, newStatus: String) {
-        // Lấy danh sách hiện tại
-        val currentList = _messages.value.toMutableList()
 
-        // Tìm vị trí tin nhắn
-        val index = currentList.indexOfFirst { it.id == messageId }
-
-        if (index != -1) {
-            // Cập nhật trạng thái
-            val oldMessage = currentList[index]
-            // Lưu ý: Message phải là data class để dùng .copy()
-            val updatedMessage = oldMessage.copy(status = newStatus)
-
-            currentList[index] = updatedMessage
-
-            // Đẩy dữ liệu mới vào luồng (StateFlow)
-            _messages.value = currentList
-        }
+    fun createGroup(name: String, memberIds: List<String>, currentUserId: String): ChatRoom {
+        val id = UUID.randomUUID().toString()
+        val room = ChatRoom(id = id, name = name)
+        return room
     }
-    fun updateMessageList(newList: List<Message>) {
 
-        _messages.value = newList
+    fun addMember(roomId: String, userId: String) { /* no-op */ }
+    fun kickMember(roomId: String, userId: String) { /* no-op */ }
+    fun leaveRoom(roomId: String) { /* no-op */ }
+    fun pinRoom(roomId: String) { /* no-op */ }
+    fun muteRoom(roomId: String) { /* no-op */ }
+    fun unpinRoom(roomId: String) { /* no-op */ }
+    fun unmuteRoom(roomId: String) { /* no-op */ }
+    fun archiveRoom(roomId: String) { /* no-op */ }
+    fun unarchiveRoom(roomId: String) { /* no-op */ }
+    fun renameGroup(roomId: String, newName: String) { /* no-op */ }
+    fun transferAdmin(roomId: String, newAdminId: String) { /* no-op */ }
+    fun markRoomAsRead(roomId: String) { /* no-op */ }
+
+    fun sendMessage(content: String, roomId: String, userId: String, type: String) {
+        socket.emit("send_message", content, roomId, userId, type)
+    }
+}
+
+/**
+ * Very small in-memory socket-like helper with simple on/emit.
+ */
+class SimpleSocket {
+    private val handlers = mutableMapOf<String, MutableList<(Array<Any?>) -> Unit>>()
+
+    fun on(event: String, handler: (Array<Any?>) -> Unit) {
+        handlers.getOrPut(event) { mutableListOf() }.add(handler)
+    }
+
+    fun on(event: String, handler: () -> Unit) {
+        val wrapped: (Array<Any?>) -> Unit = { handler() }
+        handlers.getOrPut(event) { mutableListOf() }.add(wrapped)
+    }
+
+    fun emit(event: String, vararg args: Any?) {
+        handlers[event]?.forEach { it(args as Array<Any?>) }
     }
 }

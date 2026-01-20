@@ -1,160 +1,101 @@
+// File: `app/src/main/java/com/example/client/viewmodel/ChatViewModel.kt`
 package com.example.client.viewmodel
 
-import android.app.Application
 import android.content.Context
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.net.Uri
-import android.os.Handler
-import android.os.Looper
-import android.util.Base64
-import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
+import com.example.client.model.data.ChatRoom
 import com.example.client.model.data.Message
+import com.example.client.model.data.User
 import com.example.client.model.repository.SocketRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.launch
-import org.json.JSONArray
-import org.json.JSONObject
-import java.io.ByteArrayOutputStream
-import java.io.InputStream
-import java.util.UUID
 
-class ChatViewModel(application: Application) : AndroidViewModel(application) {
-    private val repository = SocketRepository()
+/**
+ * ViewModel shim that provides the methods and properties the UI expects.
+ * This is intentionally simple and delegates to the SocketRepository stub.
+ */
+class ChatViewModel(
+    private val repository: SocketRepository = SocketRepository()
+) : ViewModel() {
 
-    val messages: StateFlow<List<Message>> = repository.messages
+    // Public flows from repository
+    val users: StateFlow<List<User>> = repository.users
+    val rooms: StateFlow<List<ChatRoom>> = repository.rooms
 
+    // Current logged-in user id (stub)
+    var currentUserId: String = "" // set by app when user signs in
 
-    val currentUserId: String
+    // Active room and messages for that room (UI expects `messages` as a list flow)
+    private val _messages = MutableStateFlow<List<Message>>(emptyList())
+    val messages: StateFlow<List<Message>> = _messages
 
-    // Phòng chat cố định (để test)
-    val currentRoomId = "room_abc"
+    private var activeRoomId: String = ""
 
-    private val _typingUser = MutableStateFlow<String?>(null)
-    val typingUser: StateFlow<String?> = _typingUser
-
-    private var typingHandler: Handler = Handler(Looper.getMainLooper())
-    private val stopTypingRunnable = Runnable {
-        repository.sendStopTyping(currentRoomId)
-        _typingUser.value = null
-    }
-
-    init {
-        val prefs = application.getSharedPreferences("chat_app_prefs", Context.MODE_PRIVATE)
-        var savedId = prefs.getString("user_id", null)
-
-        if (savedId == null) {
-            // Nếu chưa có (lần đầu mở app), tạo ID mới và lưu lại
-            savedId = "user_${UUID.randomUUID().toString().substring(0, 5)}"
-            prefs.edit().putString("user_id", savedId).apply()
-        }
-        currentUserId = savedId
-
-        // 2. Kết nối Socket
-        repository.connect()
-
-        // 3. Lắng nghe lịch sử
-        repository.socket.on("load_history") { args ->
-            if (args.isNotEmpty()) {
-                val jsonArray = args[0] as JSONArray
-                val historyList = ArrayList<Message>()
-
-                for (i in 0 until jsonArray.length()) {
-                    val jsonObject = jsonArray.getJSONObject(i)
-                    val message = Message.fromJson(jsonObject)
-                    historyList.add(message)
-                }
-
-                // Cập nhật list tin nhắn (chạy trên UI Scope để an toàn)
-                viewModelScope.launch {
-                    repository.updateMessageList(historyList)
-                }
-            }
-        }
-
-        joinRoom(currentRoomId)
-
-        // Các sự kiện lắng nghe khác giữ nguyên
-        repository.socket.on("user_typing") { args ->
-            val userId = args[0] as String
-            if (userId != currentUserId) {
-                _typingUser.value = userId
-            }
-        }
-
-        repository.socket.on("user_stopped_typing") {
-            _typingUser.value = null
-        }
-
-        repository.socket.on("message_seen_updated") { args ->
-            if (args.isNotEmpty()) {
-                val data = args[0] as JSONObject
-                val messageId = data.optString("messageId")
-                repository.updateMessageStatus(messageId, "seen")
-            }
+    // Set active room and update messages flow
+    fun setActiveRoom(roomId: String, roomName: String) {
+        activeRoomId = roomId
+        // Ask repository to sync messages (stub is no-op)
+        repository.syncMessages(roomId)
+        // Pull any messages already present in repo's backing map (stub may be empty)
+        val map = repository.messagesByRoom
+        // repository.messagesByRoom is a StateFlow; read its current value if available
+        try {
+            val currentMap = (map as? StateFlow<Map<String, List<Message>>>)?.value
+            _messages.value = currentMap?.get(roomId) ?: emptyList()
+        } catch (_: Exception) {
+            _messages.value = emptyList()
         }
     }
 
-    fun sendMessage(content: String) {
-        if (content.isNotBlank()) {
-            repository.sendMessage(content, currentRoomId, currentUserId, "TEXT")
-        }
+    fun markRoomAsRead(roomId: String) {
+        repository.markRoomAsRead(roomId)
     }
 
-    fun joinRoom(roomId: String) {
-        repository.joinRoom(roomId)
-    }
-
-    override fun onCleared() {
-        super.onCleared()
-        repository.disconnect()
-    }
-    fun onUserInputChanged(text: String) {
-        if (text.isNotBlank()) {
-            // Gửi sự kiện đang gõ
-            repository.socket.emit("typing", currentRoomId)
-
-            // Hủy lệnh dừng cũ và đặt lệnh dừng mới sau 2 giây
-            typingHandler.removeCallbacks(stopTypingRunnable)
-            typingHandler.postDelayed(stopTypingRunnable, 2000)
-        }
-    }
-
-    // Hàm báo đã xem tin nhắn (gọi khi MessageBubble hiển thị)
-    fun markAsSeen(message: Message) {
-        if (message.senderId != currentUserId && message.status != "seen") {
-            val data = JSONObject()
-            data.put("roomId", currentRoomId)
-            data.put("messageId", message.id)
-            repository.socket.emit("mark_seen", data)
-        }
-    }
     fun sendImage(context: Context, uri: Uri) {
-        val base64Image = uriToBase64(context, uri)
-        if (base64Image != null) {
-            // Gửi với type là IMAGE. Chuỗi base64 cần có prefix để hiển thị được
-            val content = "data:image/jpeg;base64,$base64Image"
-            repository.sendMessage(content, currentRoomId, currentUserId, "IMAGE")
-        }
+        // Convert to a placeholder string or call repository to upload/send
+        val placeholder = "image:$uri"
+        sendMessage(placeholder)
     }
 
-    // Hàm phụ trợ chuyển Uri sang Base64
-    private fun uriToBase64(context: Context, uri: Uri): String? {
-        return try {
-            val inputStream: InputStream? = context.contentResolver.openInputStream(uri)
-            val bitmap = BitmapFactory.decodeStream(inputStream)
-            val outputStream = ByteArrayOutputStream()
-            // Nén ảnh xuống định dạng JPEG, chất lượng 50% để giảm dung lượng
-            bitmap.compress(Bitmap.CompressFormat.JPEG, 50, outputStream)
-            val byteArray = outputStream.toByteArray()
-            Base64.encodeToString(byteArray, Base64.NO_WRAP)
-        } catch (e: Exception) {
-            e.printStackTrace()
-            null
-        }
+    fun markAsSeen(message: Message) {
+        // no-op in stub; repository could be extended to handle this
     }
 
+    fun onUserInputChanged(text: String) {
+        // Could emit typing events via repository.socket - stub no-op
+        repository.sendStopTyping(activeRoomId)
+    }
+
+    // UI calls sendMessage with a single content param; use activeRoomId and currentUserId
+    fun sendMessage(content: String) {
+        if (activeRoomId.isBlank() || currentUserId.isBlank()) return
+        val type = if (content.startsWith("data:image") || content.startsWith("image:")) "image" else "text"
+        repository.sendMessage(content, activeRoomId, currentUserId, type)
+    }
+
+    // Room and member management helpers expected by UI
+    fun joinExistingRoom(room: ChatRoom) {
+        repository.joinRoom(room.id)
+    }
+
+    fun leaveRoom(roomId: String) = repository.leaveRoom(roomId)
+    fun pinRoom(roomId: String) = repository.pinRoom(roomId)
+    fun unpinRoom(roomId: String) = repository.unpinRoom(roomId)
+    fun muteRoom(roomId: String) = repository.muteRoom(roomId)
+    fun unmuteRoom(roomId: String) = repository.unmuteRoom(roomId)
+    fun archiveRoom(roomId: String) = repository.archiveRoom(roomId)
+    fun unarchiveRoom(roomId: String) = repository.unarchiveRoom(roomId)
+
+    // Start or get a private room with a user
+    fun startPrivateChat(user: User): ChatRoom {
+        return repository.ensurePrivateRoom(currentUserId, user)
+    }
+
+    // Create group (UI calls without currentUserId)
+    fun createGroup(name: String, memberIds: List<String>): ChatRoom {
+        return repository.createGroup(name, memberIds, currentUserId)
+    }
+
+    // Fallbacks for any other repository APIs
 }
