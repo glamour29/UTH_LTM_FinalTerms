@@ -1,32 +1,87 @@
-// src/models/Room.js
+// src/models/Room.js - ENHANCED VERSION
 const mongoose = require('mongoose');
+
+const channelSchema = new mongoose.Schema({
+    id: String,
+    name: String,
+    emoji: String
+}, { _id: false });
 
 const roomSchema = new mongoose.Schema({
     name: {
         type: String, 
-        default: "" // Tên nhóm (nếu là chat 1-1 thì để rỗng cũng được)
+        default: ""
+    },
+    description: {
+        type: String,
+        default: ""
+    },
+    avatarUrl: {
+        type: String,
+        default: ""
     },
     isGroup: {
         type: Boolean,
-        default: false // false: Chat 1-1, true: Chat nhóm
+        default: false
     },
     members: [{
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'User', // Liên kết sang bảng User
+        ref: 'User',
         required: true
     }],
     admin: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'User' // Chỉ dùng khi isGroup = true
+        ref: 'User'
+    },
+    channels: [channelSchema], // For Discord/Slack-style channels
+    activeChannel: {
+        type: String,
+        default: "general"
     },
     lastMessage: {
         type: String, 
         default: "Trò chuyện mới"
     },
+    lastSenderId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+    },
     lastMessageTime: {
         type: Date,
         default: Date.now
+    },
+    // User-specific settings (will be handled differently in production)
+    isPinned: {
+        type: Boolean,
+        default: false
+    },
+    isMuted: {
+        type: Boolean,
+        default: false
+    },
+    isArchived: {
+        type: Boolean,
+        default: false
+    },
+    unreadCount: {
+        type: Number,
+        default: 0
     }
-}, { timestamps: true }); // Tự động tạo createdAt và updatedAt
+}, { timestamps: true });
+
+// Add method to add channel
+roomSchema.methods.addChannel = function(channelName, emoji) {
+    const channelId = channelName.toLowerCase().replace(/\s+/g, '-');
+    
+    if (!this.channels.find(c => c.id === channelId)) {
+        this.channels.push({
+            id: channelId,
+            name: channelName,
+            emoji: emoji || '💬'
+        });
+    }
+    
+    return this.save();
+};
 
 module.exports = mongoose.model('Room', roomSchema);
