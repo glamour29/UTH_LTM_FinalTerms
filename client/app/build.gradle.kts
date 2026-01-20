@@ -60,4 +60,11 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.coil.compose)
+    // 1. Để gọi API (Retrofit + Gson) - BẮT BUỘC
+    implementation("com.squareup.retrofit2:retrofit:2.9.0")
+    implementation("com.squareup.retrofit2:converter-gson:2.9.0")
+    // 2. Để load ảnh Avatar (Glide) - Dùng cho Profile sau này
+    implementation("com.github.bumptech.glide:glide:4.16.0")
+    implementation("androidx.compose.material:material-icons-extended:1.5.4")
+    implementation("io.socket:socket.io-client:2.1.0")
 }
