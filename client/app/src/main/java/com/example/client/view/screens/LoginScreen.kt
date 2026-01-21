@@ -146,6 +146,8 @@ fun performLogin(
                         putString("USERNAME", loginData.username)
                         apply()
                     }
+                    com.example.client.api.SocketHandler.setSocket(loginData.token) // Set token cho socket
+                    com.example.client.api.SocketHandler.establishConnection()      // Bắt đầu kết nối
                     Log.d("TOKEN_CUA_TUI", "Token là: ${loginData.token}")
                     Toast.makeText(context, "Đăng nhập thành công!", Toast.LENGTH_SHORT).show()
                     onSuccess()
