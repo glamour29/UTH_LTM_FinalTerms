@@ -98,17 +98,30 @@ fun RegisterScreen(
 }
 
 // Logic gọi API Register
+// Logic gọi API Register (ĐÃ SỬA)
 fun performRegister(context: Context, user: String, pass: String, name: String, onSuccess: () -> Unit, onError: () -> Unit) {
-    val authService = RetrofitClient.instance.create(AuthService::class.java)
+    val authService = RetrofitClient.instance // Sửa lỗi .create() hôm trước
     val request = RegisterRequest(user, pass, name)
 
     authService.register(request).enqueue(object : Callback<LoginResponse> {
         override fun onResponse(call: Call<LoginResponse>, response: Response<LoginResponse>) {
-            if (response.isSuccessful && response.body()?.success == true) {
+            // 1. Chỉ cần kiểm tra isSuccessful (Mã 200-299)
+            if (response.isSuccessful) {
                 Toast.makeText(context, "Đăng ký thành công! Hãy đăng nhập.", Toast.LENGTH_LONG).show()
                 onSuccess()
             } else {
-                Toast.makeText(context, "Đăng ký thất bại: ${response.body()?.message}", Toast.LENGTH_SHORT).show()
+                // 2. Nếu thất bại (Lỗi 400, 500...), body() sẽ null.
+                // Phải lấy thông báo lỗi từ errorBody()
+                val errorMsg = try {
+                    // Đọc chuỗi JSON lỗi từ server (ví dụ: {"message": "Tài khoản đã tồn tại!"})
+                    response.errorBody()?.string() ?: "Lỗi không xác định"
+                } catch (e: Exception) {
+                    "Lỗi phân tích dữ liệu"
+                }
+
+                // Mẹo: Nếu muốn đẹp hơn, bạn có thể parse JSON errorMsg để lấy field "message"
+                // Nhưng tạm thời hiển thị raw string để debug xem server trả về gì
+                Toast.makeText(context, "Đăng ký thất bại: $errorMsg", Toast.LENGTH_LONG).show()
                 onError()
             }
         }

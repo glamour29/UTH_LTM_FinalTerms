@@ -31,7 +31,9 @@ import java.util.*
 fun UsersScreenImproved(
     viewModel: ChatViewModel,
     onOpenChat: (roomId: String, roomName: String, isGroup: Boolean, memberCount: Int?) -> Unit,
-    onOpenNewMessage: () -> Unit = {}
+    onOpenNewMessage: () -> Unit = {},
+    onOpenProfile: () -> Unit // Thêm tham số này
+
 ) {
     val users by viewModel.users.collectAsState()
     val rooms by viewModel.rooms.collectAsState()
@@ -56,7 +58,8 @@ fun UsersScreenImproved(
         },
         bottomBar = {
             ChitzyBottomBar(
-                onNewChatClick = onOpenNewMessage
+                onNewChatClick = onOpenNewMessage,
+                onProfileClick = onOpenProfile
             )
         }
     ) { paddingValues ->
@@ -362,7 +365,8 @@ fun EmptyChatsState(onNewChatClick: () -> Unit) {
 
 @Composable
 fun ChitzyBottomBar(
-    onNewChatClick: () -> Unit = {}
+    onNewChatClick: () -> Unit = {},
+    onProfileClick: () -> Unit // Thêm callback
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -391,6 +395,14 @@ fun ChitzyBottomBar(
                 selected = false,
                 onClick = onNewChatClick
             )
+
+            BottomBarItem(
+                icon = Icons.Default.Person, // Icon hình người
+                label = "Profile",
+                selected = false,
+                onClick = onProfileClick
+            )
+
         }
     }
 }

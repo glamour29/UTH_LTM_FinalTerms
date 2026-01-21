@@ -130,7 +130,8 @@ fun performLogin(
     onSuccess: () -> Unit,
     onError: () -> Unit
 ) {
-    val authService = RetrofitClient.instance.create(AuthService::class.java)
+    // ĐÚNG: Sử dụng trực tiếp instance
+    val authService = RetrofitClient.instance
     val request = LoginRequest(user, pass)
 
     authService.login(request).enqueue(object : Callback<LoginResponse> {
