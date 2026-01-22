@@ -1,4 +1,4 @@
-﻿// File: `app/src/main/java/com/example/client/view/screens/NewMessageScreen.kt`
+﻿// File: app/src/main/java/com/example/client/view/screens/NewMessageScreen.kt
 package com.example.client.view.screens
 
 import androidx.compose.foundation.background
@@ -9,27 +9,26 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Group
-import androidx.compose.material.icons.filled.GroupAdd
-import androidx.compose.material.icons.filled.PersonAdd
-import androidx.compose.material.icons.filled.PersonOff
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.client.model.data.User
 import com.example.client.view.theme.*
 import com.example.client.viewmodel.ChatViewModel
-// Public safe default extension so UI code can compile without creating a new file.
+import kotlinx.coroutines.delay
+import androidx.compose.foundation.BorderStroke
+
+// Extension giả lập (bạn có thể thay bằng logic thật nếu có)
 val User.isOnline: Boolean
     get() = false
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NewMessageScreen(
@@ -40,24 +39,41 @@ fun NewMessageScreen(
     onCreateGroup: (String, List<String>) -> Unit
 ) {
     var searchQuery by remember { mutableStateOf("") }
-    val users by viewModel.users.collectAsState()
+    // coroutineScope removed (was unused)
+
+    val friends by viewModel.friends.collectAsState()
+    val pendingRequests by viewModel.pendingRequests.collectAsState()
+    val searchResults by viewModel.searchResults.collectAsState()
+
     var selectedUsers by remember { mutableStateOf(setOf<String>()) }
     var showCreateGroupDialog by remember { mutableStateOf(false) }
     var groupName by remember { mutableStateOf("") }
-    var memberPickerExpanded by remember { mutableStateOf(false) }
 
-    val filteredUsers = remember(users, searchQuery) {
+    var isSearching by remember { mutableStateOf(false) }
+    var isLoading by remember { mutableStateOf(false) }
+
+    // Debounce search
+    LaunchedEffect(searchQuery) {
         if (searchQuery.isBlank()) {
-            users
-        } else {
-            users.filter { user ->
-                user.username.contains(searchQuery, ignoreCase = true) ||
-                        user.fullName.contains(searchQuery, ignoreCase = true)
-            }
+            isSearching = false
+            isLoading = false
+            viewModel.clearSearchResults() // clear kết quả cũ nếu cần
+            return@LaunchedEffect
         }
+
+        isLoading = true
+        isSearching = true
+        delay(500) // debounce 500ms
+        viewModel.searchUsers(searchQuery)
+        isLoading = false
     }
 
-    val openCreateGroup = { showCreateGroupDialog = true }
+    // Load data ban đầu
+    LaunchedEffect(Unit) {
+        viewModel.refreshData()
+    }
+
+    val displayedUsers = if (isSearching) searchResults else friends
 
     Scaffold(
         topBar = {
@@ -81,12 +97,12 @@ fun NewMessageScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.Close, "Close", tint = MaterialTheme.colorScheme.onSurface)
+                        Icon(Icons.Default.Close, contentDescription = "Đóng", tint = MaterialTheme.colorScheme.onSurface)
                     }
                 },
                 actions = {
                     if (selectedUsers.size >= 2) {
-                        TextButton(onClick = openCreateGroup) {
+                        TextButton(onClick = { showCreateGroupDialog = true }) {
                             Text("Tạo nhóm", color = TealPrimary, fontWeight = FontWeight.Bold)
                         }
                     }
@@ -96,126 +112,134 @@ fun NewMessageScreen(
                 )
             )
         }
-    ) { paddingValues ->
+    ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues)
+                .padding(innerPadding)
                 .background(MaterialTheme.colorScheme.background)
         ) {
+            // Search bar
             OutlinedTextField(
                 value = searchQuery,
-                onValueChange = { searchQuery = it },
+                onValueChange = { searchQuery = it.trim() },
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp),
                 placeholder = {
                     Text(
-                        "Tìm kiếm theo tên hoặc số điện thoại...",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 15.sp
+                        "Tìm kiếm theo tên, username hoặc số điện thoại...",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 },
                 leadingIcon = {
-                    Icon(Icons.Default.Search, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Icon(Icons.Default.Search, contentDescription = null)
                 },
                 trailingIcon = {
                     if (searchQuery.isNotEmpty()) {
                         IconButton(onClick = { searchQuery = "" }) {
-                            Icon(Icons.Default.Close, "Clear", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Icon(Icons.Default.Close, contentDescription = "Xóa")
                         }
                     }
                 },
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(16.dp),
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = Color.Transparent,
-                    unfocusedBorderColor = Color.Transparent,
                     focusedContainerColor = MaterialTheme.colorScheme.surface,
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surface
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                    focusedBorderColor = Color.Transparent,
+                    unfocusedBorderColor = Color.Transparent
                 ),
                 singleLine = true
             )
 
             QuickActionButtons(
-                onCreateGroup = openCreateGroup,
+                onCreateGroup = { showCreateGroupDialog = true },
                 onAddContact = onAddContact
             )
 
-            HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant, thickness = 1.dp)
+            HorizontalDivider(
+                thickness = 1.dp,
+                color = MaterialTheme.colorScheme.surfaceVariant
+            )
 
-            if (filteredUsers.isEmpty()) {
-                EmptyContactList()
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(vertical = 8.dp)
-                ) {
-                    val onlineUsers = filteredUsers.filter { it.isOnline }
-                    if (onlineUsers.isNotEmpty() && searchQuery.isBlank()) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(bottom = 16.dp)
+            ) {
+                // Phần lời mời kết bạn đang chờ (chỉ hiển thị khi không search)
+                if (!isSearching && pendingRequests.isNotEmpty()) {
+                    item {
+                        SectionHeader("Lời mời kết bạn đang chờ")
+                    }
+                    items(pendingRequests) { user ->
+                        PendingRequestRow(
+                            user = user,
+                            onAccept = { viewModel.acceptFriendRequest(user.id) }
+                        )
+                    }
+                    item { Spacer(modifier = Modifier.height(16.dp)) }
+                }
+
+                // Danh sách bạn bè hoặc kết quả tìm kiếm
+                if (isLoading) {
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(32.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator()
+                        }
+                    }
+                } else if (displayedUsers.isEmpty()) {
+                    item {
+                        if (isSearching) {
+                            EmptySearchResult()
+                        } else {
+                            EmptyContactList()
+                        }
+                    }
+                } else {
+                    if (!isSearching) {
                         item {
-                            Text(
-                                "Đang hoạt động",
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                            )
+                            SectionHeader("Bạn bè")
                         }
-                        items(onlineUsers) { user ->
-                            NewMessageContactRow(
-                                contact = user,
-                                isSelected = selectedUsers.contains(user.id),
-                                onClick = {
-                                    if (selectedUsers.isEmpty()) {
-                                        onUserSelected(user)
+                    }
+
+                    items(displayedUsers) { user ->
+                        val isFriend = friends.any { it.id == user.id }
+                        val hasPending = pendingRequests.any { it.id == user.id }
+
+                        NewMessageContactRow(
+                            contact = user,
+                            isSelected = selectedUsers.contains(user.id),
+                            showFriendRequestButton = isSearching && !isFriend && !hasPending,
+                            onClick = {
+                                if (selectedUsers.isEmpty()) {
+                                    // Chọn 1 người -> mở chat ngay
+                                    onUserSelected(user)
+                                } else {
+                                    // Multi-select mode
+                                    selectedUsers = if (selectedUsers.contains(user.id)) {
+                                        selectedUsers - user.id
                                     } else {
-                                        selectedUsers = if (selectedUsers.contains(user.id)) selectedUsers - user.id
-                                        else selectedUsers + user.id
+                                        selectedUsers + user.id
                                     }
                                 }
-                            )
-                        }
-                    }
-
-                    val allContacts = if (searchQuery.isBlank()) {
-                        filteredUsers.filter { !it.isOnline }
-                    } else {
-                        filteredUsers
-                    }
-
-                    if (allContacts.isNotEmpty()) {
-                        if (onlineUsers.isNotEmpty() && searchQuery.isBlank()) {
-                            item {
-                                Text(
-                                    "Tất cả liên hệ",
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                                )
+                            },
+                            onSendFriendRequest = {
+                                viewModel.sendFriendRequest(user.id)
+                                // Optional: thông báo toast "Đã gửi lời mời" (bạn có thể thêm sau)
                             }
-                        }
-
-                        items(allContacts) { user ->
-                            NewMessageContactRow(
-                                contact = user,
-                                isSelected = selectedUsers.contains(user.id),
-                                onClick = {
-                                    if (selectedUsers.isEmpty()) {
-                                        onUserSelected(user)
-                                    } else {
-                                        selectedUsers = if (selectedUsers.contains(user.id)) selectedUsers - user.id
-                                        else selectedUsers + user.id
-                                    }
-                                }
-                            )
-                        }
+                        )
                     }
                 }
             }
         }
     }
 
+    // Dialog tạo nhóm
     if (showCreateGroupDialog) {
         AlertDialog(
             onDismissRequest = { showCreateGroupDialog = false },
@@ -224,103 +248,240 @@ fun NewMessageScreen(
             text = {
                 Column {
                     Text(
-                        "Nhập tên nhóm và chọn ít nhất 2 thành viên.",
-                        fontSize = 13.sp,
+                        "Nhập tên nhóm (tối thiểu 2 thành viên)",
+                        fontSize = 14.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    Spacer(Modifier.height(12.dp))
+                    Spacer(Modifier.height(16.dp))
                     OutlinedTextField(
                         value = groupName,
                         onValueChange = { groupName = it },
-                        placeholder = { Text("Tên nhóm") },
+                        placeholder = { Text("Tên nhóm...") },
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
                         singleLine = true
                     )
-                    Spacer(Modifier.height(12.dp))
-
-                    ExposedDropdownMenuBox(
-                        expanded = memberPickerExpanded,
-                        onExpandedChange = { memberPickerExpanded = !memberPickerExpanded }
-                    ) {
-                        OutlinedTextField(
-                            value = "Đã chọn: ${selectedUsers.size}",
-                            onValueChange = {},
-                            readOnly = true,
-                            label = { Text("Thành viên") },
-                            trailingIcon = {
-                                ExposedDropdownMenuDefaults.TrailingIcon(
-                                    expanded = memberPickerExpanded
-                                )
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp)
-                        )
-                        ExposedDropdownMenu(
-                            expanded = memberPickerExpanded,
-                            onDismissRequest = { memberPickerExpanded = false }
-                        ) {
-                            users.forEach { user ->
-                                val isSelected = selectedUsers.contains(user.id)
-                                DropdownMenuItem(
-                                    text = {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Checkbox(
-                                                checked = isSelected,
-                                                onCheckedChange = {
-                                                    selectedUsers = if (isSelected) selectedUsers - user.id
-                                                    else selectedUsers + user.id
-                                                }
-                                            )
-                                            Spacer(Modifier.width(8.dp))
-                                            Text(user.fullName.ifBlank { user.username })
-                                        }
-                                    },
-                                    onClick = {
-                                        selectedUsers = if (isSelected) {
-                                            selectedUsers - user.id
-                                        } else {
-                                            selectedUsers + user.id
-                                        }
-                                    }
-                                )
-                            }
-                        }
-                    }
-
-                    if (selectedUsers.size < 2) {
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            "Chọn ít nhất 2 người.",
-                            fontSize = 12.sp,
-                            color = ErrorRed
-                        )
-                    }
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        "Đã chọn: ${selectedUsers.size} người",
+                        fontWeight = FontWeight.Medium
+                    )
                 }
             },
             confirmButton = {
                 Button(
                     onClick = {
-                        val name = groupName.ifBlank { "New Group" }
+                        val name = groupName.ifBlank { "Nhóm mới" }
                         onCreateGroup(name, selectedUsers.toList())
                         showCreateGroupDialog = false
                         groupName = ""
+                        selectedUsers = emptySet()
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = TealPrimary),
-                    enabled = selectedUsers.size >= 2
+                    enabled = selectedUsers.size >= 2,
+                    colors = ButtonDefaults.buttonColors(containerColor = TealPrimary)
                 ) {
-                    Text("Tạo")
+                    Text("Tạo nhóm")
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showCreateGroupDialog = false }) {
-                    Text("Huỷ", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Hủy")
                 }
             }
         )
+    }
+}
+
+@Composable
+fun SectionHeader(title: String) {
+    Text(
+        text = title,
+        fontSize = 15.sp,
+        fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+    )
+}
+
+@Composable
+fun PendingRequestRow(
+    user: User,
+    onAccept: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                modifier = Modifier.size(52.dp),
+                shape = CircleShape,
+                color = TealLight
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(
+                        user.username.firstOrNull()?.uppercase() ?: "U",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TealPrimary
+                    )
+                }
+            }
+
+            Spacer(Modifier.width(16.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    user.fullName.ifBlank { user.username },
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 16.sp
+                )
+                Text(
+                    "Đã gửi lời mời kết bạn",
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Button(
+                onClick = onAccept,
+                colors = ButtonDefaults.buttonColors(containerColor = TealPrimary)
+            ) {
+                Text("Chấp nhận")
+            }
+        }
+    }
+}
+
+@Composable
+fun NewMessageContactRow(
+    contact: User,
+    isSelected: Boolean,
+    showFriendRequestButton: Boolean,
+    onClick: () -> Unit,
+    onSendFriendRequest: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        shape = RoundedCornerShape(16.dp),
+        color = if (isSelected) TealVeryLight else MaterialTheme.colorScheme.surface
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box {
+                Surface(
+                    modifier = Modifier.size(52.dp),
+                    shape = CircleShape,
+                    color = TealLight
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            contact.username.firstOrNull()?.uppercase() ?: "U",
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TealPrimary
+                        )
+                    }
+                }
+
+                if (contact.isOnline) {
+                    Surface(
+                        modifier = Modifier
+                            .size(16.dp)
+                            .align(Alignment.BottomEnd),
+                        shape = CircleShape,
+                        color = OnlineGreen,
+                        border = BorderStroke(3.dp, Color.White)
+                    ) {}
+                }
+            }
+
+            Spacer(Modifier.width(16.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    contact.fullName.ifBlank { contact.username },
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 16.sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    if (contact.isOnline) "Đang hoạt động" else "@${contact.username}",
+                    fontSize = 14.sp,
+                    color = if (contact.isOnline) OnlineGreen else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            when {
+                isSelected -> {
+                    Icon(
+                        Icons.Default.CheckCircle,
+                        contentDescription = "Đã chọn",
+                        tint = TealPrimary,
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
+                showFriendRequestButton -> {
+                    OutlinedButton(
+                        onClick = onSendFriendRequest,
+                        modifier = Modifier.padding(start = 12.dp)
+                    ) {
+                        Text("Kết bạn")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun EmptySearchResult() {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(32.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                Icons.Default.PersonSearch,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(80.dp)
+            )
+            Spacer(Modifier.height(24.dp))
+            Text(
+                "Không tìm thấy kết quả",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(Modifier.height(12.dp))
+            Text(
+                "Hãy thử nhập tên, username hoặc số điện thoại khác",
+                fontSize = 15.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
+        }
     }
 }
 
@@ -332,12 +493,11 @@ fun QuickActionButtons(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surface)
-            .padding(16.dp),
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         horizontalArrangement = Arrangement.SpaceEvenly
     ) {
         QuickActionButton(
-            icon = Icons.Default.Group,
+            icon = Icons.Default.GroupAdd,
             label = "Tạo nhóm",
             onClick = onCreateGroup
         )
@@ -360,7 +520,7 @@ fun QuickActionButton(
         modifier = Modifier.clickable(onClick = onClick)
     ) {
         Surface(
-            modifier = Modifier.size(56.dp),
+            modifier = Modifier.size(64.dp),
             shape = CircleShape,
             color = TealVeryLight
         ) {
@@ -369,14 +529,14 @@ fun QuickActionButton(
                     icon,
                     contentDescription = label,
                     tint = TealPrimary,
-                    modifier = Modifier.size(28.dp)
+                    modifier = Modifier.size(32.dp)
                 )
             }
         }
         Spacer(Modifier.height(8.dp))
         Text(
             label,
-            fontSize = 12.sp,
+            fontSize = 13.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontWeight = FontWeight.Medium
         )
@@ -384,125 +544,34 @@ fun QuickActionButton(
 }
 
 @Composable
-fun NewMessageContactRow(
-    contact: User,
-    isSelected: Boolean,
-    onClick: () -> Unit
-) {
-    Surface(
-        onClick = onClick,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 4.dp),
-        color = if (isSelected) TealVeryLight else MaterialTheme.colorScheme.surface,
-        shape = RoundedCornerShape(8.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box {
-                Surface(
-                    modifier = Modifier.size(48.dp),
-                    shape = CircleShape,
-                    color = TealLight
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text(
-                            contact.username.firstOrNull()?.uppercase() ?: "U",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = TealPrimary
-                        )
-                    }
-                }
-                if (contact.isOnline) {
-                    Surface(
-                        modifier = Modifier
-                            .size(14.dp)
-                            .align(Alignment.BottomEnd),
-                        shape = CircleShape,
-                        color = OnlineGreen,
-                        border = androidx.compose.foundation.BorderStroke(2.dp, Color.White)
-                    ) {}
-                }
-            }
-
-            Spacer(Modifier.width(12.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    contact.fullName.ifBlank { contact.username },
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 15.sp,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    if (contact.isOnline) "Đang hoạt động" else "@${contact.username}",
-                    fontSize = 13.sp,
-                    color = if (contact.isOnline) OnlineGreen else MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            if (isSelected) {
-                Surface(
-                    modifier = Modifier.size(24.dp),
-                    shape = CircleShape,
-                    color = TealPrimary
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            Icons.Default.Check,
-                            contentDescription = "Selected",
-                            tint = Color.White,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-                }
-            } else {
-                Surface(
-                    modifier = Modifier
-                        .size(24.dp),
-                    shape = CircleShape,
-                    color = Color.Transparent,
-                    border = androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.surfaceVariant)
-                ) {}
-            }
-        }
-    }
-}
-
-@Composable
 fun EmptyContactList() {
     Box(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(32.dp),
         contentAlignment = Alignment.Center
     ) {
         Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.padding(32.dp)
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Icon(
                 Icons.Default.PersonOff,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(64.dp)
+                modifier = Modifier.size(80.dp)
             )
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(24.dp))
             Text(
-                "Không có liên hệ nào",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
+                "Chưa có liên hệ nào",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold
             )
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(12.dp))
             Text(
-                "Hãy thêm bạn bè để bắt đầu trò chuyện",
-                fontSize = 14.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                "Thêm bạn bè để bắt đầu trò chuyện",
+                fontSize = 15.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
             )
         }
     }

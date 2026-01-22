@@ -26,7 +26,8 @@ fun RegisterScreen(
 ) {
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
-    var fullName by remember { mutableStateOf("") } // Thêm cái này
+    var fullName by remember { mutableStateOf("") }
+    var phoneNumber by remember { mutableStateOf("") } // Thêm field mới
     var isLoading by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
@@ -44,6 +45,14 @@ fun RegisterScreen(
         OutlinedTextField(
             value = fullName, onValueChange = { fullName = it },
             label = { Text("Họ và Tên") },
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(10.dp))
+
+        // Nhập Số điện thoại
+        OutlinedTextField(
+            value = phoneNumber, onValueChange = { phoneNumber = it },
+            label = { Text("Số điện thoại") },
             modifier = Modifier.fillMaxWidth()
         )
         Spacer(modifier = Modifier.height(10.dp))
@@ -69,9 +78,9 @@ fun RegisterScreen(
         // Nút Đăng Ký
         Button(
             onClick = {
-                if (username.isNotEmpty() && password.isNotEmpty() && fullName.isNotEmpty()) {
+                if (username.isNotEmpty() && password.isNotEmpty() && fullName.isNotEmpty() && phoneNumber.isNotEmpty()) {
                     isLoading = true
-                    performRegister(context, username, password, fullName,
+                    performRegister(context, username, password, fullName, phoneNumber,
                         onSuccess = {
                             isLoading = false
                             onRegisterSuccess()
@@ -98,29 +107,21 @@ fun RegisterScreen(
 }
 
 // Logic gọi API Register
-// Logic gọi API Register (ĐÃ SỬA)
-fun performRegister(context: Context, user: String, pass: String, name: String, onSuccess: () -> Unit, onError: () -> Unit) {
-    val authService = RetrofitClient.instance // Sửa lỗi .create() hôm trước
-    val request = RegisterRequest(user, pass, name)
+fun performRegister(context: Context, user: String, pass: String, name: String, phone: String, onSuccess: () -> Unit, onError: () -> Unit) {
+    val authService = RetrofitClient.instance
+    val request = RegisterRequest(user, pass, name, phone)
 
     authService.register(request).enqueue(object : Callback<LoginResponse> {
         override fun onResponse(call: Call<LoginResponse>, response: Response<LoginResponse>) {
-            // 1. Chỉ cần kiểm tra isSuccessful (Mã 200-299)
             if (response.isSuccessful) {
                 Toast.makeText(context, "Đăng ký thành công! Hãy đăng nhập.", Toast.LENGTH_LONG).show()
                 onSuccess()
             } else {
-                // 2. Nếu thất bại (Lỗi 400, 500...), body() sẽ null.
-                // Phải lấy thông báo lỗi từ errorBody()
                 val errorMsg = try {
-                    // Đọc chuỗi JSON lỗi từ server (ví dụ: {"message": "Tài khoản đã tồn tại!"})
                     response.errorBody()?.string() ?: "Lỗi không xác định"
                 } catch (e: Exception) {
                     "Lỗi phân tích dữ liệu"
                 }
-
-                // Mẹo: Nếu muốn đẹp hơn, bạn có thể parse JSON errorMsg để lấy field "message"
-                // Nhưng tạm thời hiển thị raw string để debug xem server trả về gì
                 Toast.makeText(context, "Đăng ký thất bại: $errorMsg", Toast.LENGTH_LONG).show()
                 onError()
             }

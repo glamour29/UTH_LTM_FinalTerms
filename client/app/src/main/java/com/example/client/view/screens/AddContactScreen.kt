@@ -1,8 +1,9 @@
 ﻿package com.example.client.view.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -16,47 +17,30 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.client.view.theme.*
+import com.example.client.viewmodel.ChatViewModel
+import com.example.client.model.data.User
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddNewContactScreen(
-    onBack: () -> Unit,
-    onSave: (String, String) -> Unit
+    viewModel: ChatViewModel,
+    onBack: () -> Unit
 ) {
-    var name by remember { mutableStateOf("") }
     var phoneNumber by remember { mutableStateOf("") }
-    var countryCode by remember { mutableStateOf("+62") }
+    // Lắng nghe kết quả từ ViewModel
+    val searchResults by viewModel.searchResults.collectAsState()
+    val isSearching by viewModel.isSearching.collectAsState()
+    
+    // Track if search has been performed at least once
+    var searchPerformed by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { 
-                    Text(
-                        "Add New Contact",
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 18.sp
-                    ) 
-                },
+                title = { Text("Thêm bạn bè", fontWeight = FontWeight.SemiBold, fontSize = 18.sp) },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Surface(
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.surfaceVariant,
-                            modifier = Modifier.size(40.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    Icons.Default.Close,
-                                    contentDescription = "Close",
-                                    tint = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                        }
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                )
+                    IconButton(onClick = onBack) { Icon(Icons.Default.Close, null) }
+                }
             )
         }
     ) { paddingValues ->
@@ -67,101 +51,107 @@ fun AddNewContactScreen(
                 .background(MaterialTheme.colorScheme.background)
                 .padding(24.dp)
         ) {
-            Spacer(Modifier.height(16.dp))
-
-            // Name input
-            Text(
-                "Name",
-                fontSize = 14.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontWeight = FontWeight.Medium
-            )
+            Text("Nhập số điện thoại để tìm kiếm", fontSize = 14.sp, color = Color.Gray)
             Spacer(Modifier.height(8.dp))
             OutlinedTextField(
-                value = name,
-                onValueChange = { name = it },
+                value = phoneNumber,
+                onValueChange = { 
+                    phoneNumber = it
+                    if (it.isBlank()) {
+                        viewModel.clearSearchResults()
+                        searchPerformed = false
+                    }
+                },
                 modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("Name", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                placeholder = { Text("Ví dụ: 09123...") },
+                leadingIcon = { Text(" +84", fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp)) },
                 shape = RoundedCornerShape(12.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = TealPrimary,
-                    unfocusedBorderColor = Color.Transparent,
-                    focusedContainerColor = MaterialTheme.colorScheme.surface,
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surface
-                ),
-                singleLine = true
+                singleLine = true,
+                enabled = !isSearching
             )
 
             Spacer(Modifier.height(24.dp))
 
-            // Phone number input
-            Text(
-                "Phone Number",
-                fontSize = 14.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontWeight = FontWeight.Medium
-            )
-            Spacer(Modifier.height(8.dp))
-            OutlinedTextField(
-                value = phoneNumber,
-                onValueChange = { phoneNumber = it },
-                modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("Phone Number", color = MaterialTheme.colorScheme.onSurfaceVariant) },
-                leadingIcon = {
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = Color(0xFFE53935),
-                        modifier = Modifier.size(32.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text(
-                                "ID",
-                                fontSize = 16.sp
-                            )
-                        }
+            Button(
+                onClick = { 
+                    if (phoneNumber.isNotBlank()) {
+                        searchPerformed = true
+                        viewModel.searchUsers(phoneNumber)
                     }
-                    Text(
-                        " $countryCode",
-                        fontSize = 15.sp,
-                        modifier = Modifier.padding(start = 8.dp)
-                    )
                 },
-                shape = RoundedCornerShape(12.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = TealPrimary,
-                    unfocusedBorderColor = Color.Transparent,
-                    focusedContainerColor = MaterialTheme.colorScheme.surface,
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surface
-                ),
-                singleLine = true
-            )
+                modifier = Modifier.fillMaxWidth().height(56.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = TealPrimary),
+                shape = RoundedCornerShape(16.dp),
+                enabled = !isSearching && phoneNumber.isNotBlank()
+            ) {
+                if (isSearching) {
+                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
+                } else {
+                    Text("TÌM KIẾM", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                }
+            }
 
             Spacer(Modifier.height(32.dp))
 
-            Spacer(Modifier.weight(1f))
-
-            // Save button
-            Button(
-                onClick = { 
-                    if (name.isNotBlank() || phoneNumber.isNotBlank()) {
-                        onSave(name, "$countryCode$phoneNumber")
+            // HIỂN THỊ KẾT QUẢ TÌM KIẾM
+            if (searchResults.isNotEmpty()) {
+                Text("Kết quả tìm thấy:", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(16.dp))
+                
+                LazyColumn {
+                    items(searchResults) { user ->
+                        if (user.id != viewModel.currentUserId) {
+                            SearchResultItem(
+                                user = user,
+                                onAddFriend = { 
+                                    viewModel.sendFriendRequest(user.id)
+                                    onBack()
+                                }
+                            )
+                        }
                     }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = TealPrimary),
-                shape = RoundedCornerShape(16.dp),
-                enabled = name.isNotBlank() || phoneNumber.isNotBlank()
-            ) {
-                Text(
-                    "Save",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
+                }
+            } else if (searchPerformed && !isSearching) {
+                // Chỉ hiện thông báo này khi đã search xong và không có kết quả
+                Text("Không tìm thấy người dùng này", color = Color.Red, fontSize = 14.sp)
             }
+        }
+    }
+}
 
-            Spacer(Modifier.height(16.dp))
+@Composable
+fun SearchResultItem(user: User, onAddFriend: () -> Unit) {
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        color = Color.White,
+        shape = RoundedCornerShape(12.dp),
+        shadowElevation = 2.dp
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(modifier = Modifier.size(48.dp), shape = CircleShape, color = TealLight) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(user.username.take(1).uppercase(), fontWeight = FontWeight.Bold, color = TealPrimary)
+                }
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(user.fullName.ifBlank { user.username }, fontWeight = FontWeight.SemiBold)
+                if (user.phoneNumber.isNotBlank()) {
+                    Text(user.phoneNumber, fontSize = 12.sp, color = TealPrimary)
+                } else {
+                    Text("@${user.username}", fontSize = 12.sp, color = Color.Gray)
+                }
+            }
+            Button(
+                onClick = onAddFriend,
+                colors = ButtonDefaults.buttonColors(containerColor = TealPrimary),
+                contentPadding = PaddingValues(horizontal = 12.dp)
+            ) {
+                Text("Kết bạn", fontSize = 12.sp)
+            }
         }
     }
 }

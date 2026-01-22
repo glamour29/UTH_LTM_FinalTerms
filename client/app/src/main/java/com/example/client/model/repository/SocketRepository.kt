@@ -273,7 +273,8 @@ class SocketRepository(
                 id = obj.optString("id"),
                 username = obj.optString("username"),
                 fullName = obj.optString("fullName"),
-                avatarUrl = obj.optString("avatarUrl", "")
+                avatarUrl = obj.optString("avatarUrl", ""),
+                phoneNumber = obj.optString("phoneNumber", "")
             )
             out.add(user)
         }
