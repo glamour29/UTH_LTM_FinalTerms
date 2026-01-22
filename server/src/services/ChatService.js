@@ -147,8 +147,9 @@ class ChatService {
             senderId
         );
         
-        return await MessageRepository.findById(message._id)
-            .populate('senderId', 'username fullName avatarUrl');
+        // --- SỬA Ở ĐÂY: Dùng hàm mới thay vì chuỗi lệnh gây lỗi ---
+        return await MessageRepository.findByIdWithDetails(message._id);
+        // ---------------------------------------------------------
     }
     
     async addReactionToMessage(messageId, emoji, userId) {

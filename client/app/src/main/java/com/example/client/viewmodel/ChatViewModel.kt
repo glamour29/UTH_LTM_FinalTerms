@@ -6,7 +6,6 @@ import android.util.Base64
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.client.model.*
 import com.example.client.model.data.ChatRoom
 import com.example.client.model.data.Message
 import com.example.client.model.data.User
@@ -14,216 +13,150 @@ import com.example.client.model.repository.SocketRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
-import java.util.UUID
 
 class ChatViewModel(
-    private val repository: SocketRepository = SocketRepository()
+    val repository: SocketRepository,
+    val currentUserId: String
 ) : ViewModel() {
 
-    private val apiService = RetrofitClient.instance
+    private val TAG = "ChatViewModel"
 
-    val users: StateFlow<List<User>> = repository.users
-    
-    private val _friends = MutableStateFlow<List<User>>(emptyList())
-    val friends: StateFlow<List<User>> = _friends
-
-    private val _pendingRequests = MutableStateFlow<List<User>>(emptyList())
-    val pendingRequests: StateFlow<List<User>> = _pendingRequests
-
-    private val _searchResults = MutableStateFlow<List<User>>(emptyList())
-    val searchResults: StateFlow<List<User>> = _searchResults
-
-    private val _isSearching = MutableStateFlow(false)
-    val isSearching: StateFlow<Boolean> = _isSearching
-
-    private val _rooms = MutableStateFlow<List<ChatRoom>>(emptyList())
-    val rooms: StateFlow<List<ChatRoom>> = _rooms
-
-    var currentUserId: String = ""
-    private var authToken: String = ""
-
+    // Danh sách tin nhắn hiển thị trên màn hình chat
     private val _messages = MutableStateFlow<List<Message>>(emptyList())
     val messages: StateFlow<List<Message>> = _messages
 
-    private var activeRoomId: String = ""
+    // Quan sát danh sách các phòng chat từ Repository
+    val rooms = repository.rooms
+
+    // ID phòng đang chat hiện tại
+    var activeRoomId: String = ""
+        private set
 
     init {
+        // 1. Yêu cầu danh sách phòng ngay khi ViewModel được khởi tạo
+        refreshRooms()
+
+        // 2. LUỒNG TỰ ĐỘNG CẬP NHẬT: Luôn lắng nghe tin nhắn mới từ Repository
         viewModelScope.launch(Dispatchers.IO) {
-            repository.messagesByRoom.collectLatest { map ->
+            repository.messagesByRoom.collect { map ->
                 if (activeRoomId.isNotBlank()) {
-                    val list = map[activeRoomId] ?: emptyList()
-                    _messages.value = list
-                }
-            }
-        }
-        
-        viewModelScope.launch {
-            repository.rooms.collect { socketRooms ->
-                if (socketRooms.isNotEmpty()) {
-                    _rooms.value = socketRooms
+                    // Cập nhật danh sách tin nhắn ngay khi Map trong Repository thay đổi
+                    val roomMessages = map[activeRoomId] ?: emptyList()
+                    _messages.value = roomMessages
+                    Log.d(TAG, "Đã cập nhật UI cho phòng $activeRoomId: ${roomMessages.size} tin nhắn")
                 }
             }
         }
     }
 
-    fun connect(token: String, userId: String) {
-        if (token.isBlank()) return
-        authToken = token
-        currentUserId = userId
-        Log.d("CHAT_VM", "Connect thành công. Token: ${token.take(10)}...")
-        repository.connect(token)
-        refreshData()
+    // Thiết lập phòng chat khi người dùng nhấn vào một cuộc hội thoại
+    fun setActiveRoom(roomId: String, roomName: String) {
+        activeRoomId = roomId
+
+        // Lấy nhanh tin nhắn từ cache hiển thị lên trước
+        _messages.value = repository.messagesByRoom.value[roomId] ?: emptyList()
+
+        // Tham gia phòng và đồng bộ tin nhắn mới nhất từ Server
+        repository.joinRoom(roomId)
+        repository.syncMessages(roomId)
     }
 
-    fun refreshData() {
-        if (authToken.isBlank()) return
-        fetchRooms()
-        fetchFriends()
-        fetchPendingRequests()
-    }
-
-    fun fetchRooms() {
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val response = apiService.getRooms("Bearer $authToken")
-                _rooms.value = response
-            } catch (e: Exception) { e.printStackTrace() }
-        }
-    }
-
-    fun fetchFriends() {
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val friendsList = apiService.getFriends("Bearer $authToken")
-                _friends.value = friendsList
-            } catch (e: Exception) { e.printStackTrace() }
-        }
-    }
-
-    fun fetchPendingRequests() {
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val requests = apiService.getPendingRequests("Bearer $authToken")
-                _pendingRequests.value = requests
-            } catch (e: Exception) { e.printStackTrace() }
-        }
-    }
-
-    fun searchUsers(query: String) {
-        val trimmedQuery = query.trim()
-        if (trimmedQuery.isBlank() || authToken.isBlank()) return
-        
-        viewModelScope.launch(Dispatchers.IO) {
-            _isSearching.value = true
-            try {
-                var results = apiService.searchUsers("Bearer $authToken", trimmedQuery)
-                if (results.isEmpty() && !trimmedQuery.startsWith("0") && !trimmedQuery.startsWith("+")) {
-                    results = apiService.searchUsers("Bearer $authToken", "0$trimmedQuery")
-                }
-                _searchResults.value = results
-            } catch (e: Exception) { 
-                _searchResults.value = emptyList()
-            } finally {
-                _isSearching.value = false
-            }
-        }
-    }
-
-    fun clearSearchResults() {
-        _searchResults.value = emptyList()
-    }
-
-    fun joinExistingRoom(room: ChatRoom) {
-        repository.joinRoom(room.id)
-    }
-
-    fun markAsSeen(message: Message) {
-        // repository.markAsSeen(message.id)
-    }
-
-    fun onUserInputChanged(text: String) {
-        // repository.sendTypingIndicator(activeRoomId)
-    }
-
-    fun markRoomAsRead(roomId: String) = repository.markRoomAsRead(roomId)
-
+    // Gửi tin nhắn văn bản
     fun sendMessage(content: String) {
-        if (activeRoomId.isBlank() || currentUserId.isBlank()) return
-        viewModelScope.launch(Dispatchers.IO) {
-            repository.sendMessage(content, activeRoomId, currentUserId, if (content.startsWith("image:")) "image" else "text")
-        }
+        if (activeRoomId.isBlank()) return
+        repository.sendMessage(
+            content = content,
+            roomId = activeRoomId,
+            userId = currentUserId,
+            type = "TEXT"
+        )
     }
 
+    // Gửi tin nhắn hình ảnh (Chuyển đổi sang Base64)
     fun sendImage(context: Context, uri: Uri) {
+        if (activeRoomId.isBlank()) return
+
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val inputStream = context.contentResolver.openInputStream(uri)
                 val bytes = inputStream?.readBytes()
                 inputStream?.close()
+
                 if (bytes != null) {
-                    val base64String = Base64.encodeToString(bytes, Base64.DEFAULT)
-                    repository.sendMessage(base64String, activeRoomId, currentUserId, "image")
+                    // Sử dụng Base64.NO_WRAP để tránh lỗi định dạng JSON khi gửi chuỗi dài
+                    val base64String = Base64.encodeToString(bytes, Base64.NO_WRAP)
+
+                    repository.sendMessage(
+                        content = base64String,
+                        roomId = activeRoomId,
+                        userId = currentUserId,
+                        type = "IMAGE"
+                    )
+                    Log.d(TAG, "Gửi ảnh thành công qua Socket")
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
+                Log.e(TAG, "Lỗi khi xử lý ảnh: ${e.message}")
             }
         }
     }
 
-    fun createGroup(name: String, memberIds: List<String>): ChatRoom {
-        val tempRoom = ChatRoom(id = "temp_${UUID.randomUUID()}", name = name, isGroup = true, memberIds = memberIds)
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                apiService.createGroup("Bearer $authToken", CreateGroupRequest(name, memberIds))
-                fetchRooms()
-            } catch (e: Exception) { e.printStackTrace() }
-        }
-        return tempRoom
-    }
-
-    fun addMember(roomId: String, userId: String) {
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                apiService.addMember("Bearer $authToken", roomId, MemberRequest(userId))
-                repository.addMember(roomId, userId)
-                fetchRooms()
-            } catch (e: Exception) { e.printStackTrace() }
+    // Đánh dấu đã đọc phòng chat
+    fun markAsSeen(message: Message) {
+        if (message.senderId != currentUserId) {
+            repository.markRoomAsRead(message.roomId)
         }
     }
 
-    fun sendFriendRequest(userId: String) {
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                apiService.sendFriendRequest("Bearer $authToken", FriendRequest(userId))
-            } catch (e: Exception) { e.printStackTrace() }
+    // Hàm yêu cầu Server gửi lại danh sách phòng chat
+    fun refreshRooms() {
+        if (currentUserId.isNotBlank()) {
+            repository.requestRooms(currentUserId)
+            Log.d(TAG, "Đã gọi requestRooms cho User: $currentUserId")
         }
     }
+    // Thêm vào ChatViewModel.kt
+    fun connect(token: String, userId: String) {
+        repository.connect(token)
+        // Bạn có thể lưu userId vào biến local nếu cần
+    }
+    // Thêm vào ChatViewModel.kt
 
-    fun acceptFriendRequest(userId: String) {
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                apiService.acceptFriendRequest("Bearer $authToken", FriendRequest(userId))
-                refreshData()
-            } catch (e: Exception) { e.printStackTrace() }
-        }
+    // Dùng cho trường hợp nhấn vào một User để bắt đầu chat 1-1
+    fun startPrivateChat(user: com.example.client.model.data.User): com.example.client.model.data.ChatRoom {
+        val room = repository.ensurePrivateRoom(currentUserId, user)
+        setActiveRoom(room.id, room.name)
+        return room
+    }
+    val friends: StateFlow<List<User>> = repository.users // Hoặc repository.friends tùy tên bạn đặt trong Repo
+
+    // 2. Thêm hàm refreshData (để App gọi khi vào màn hình mới)
+    fun refreshData() {
+        refreshRooms()
+        // Nếu có hàm lấy danh sách bạn bè riêng trong repo, hãy gọi ở đây
+        repository.requestOnlineUsers()
+    }
+    // Thêm vào ChatViewModel.kt để fix lỗi đỏ trong UsersScreenImproved
+    fun joinExistingRoom(room: ChatRoom) {
+        setActiveRoom(room.id, room.name)
     }
 
-    fun setActiveRoom(roomId: String, roomName: String) {
-        activeRoomId = roomId
-        repository.syncMessages(roomId)
+    // Hàm tạo nhóm
+    fun createGroup(name: String, memberIds: List<String>): com.example.client.model.data.ChatRoom {
+        val room = repository.createGroup(name, memberIds)
+        refreshRooms() // Load lại danh sách phòng để thấy nhóm mới
+        return room
+    }
+    fun markRoomAsRead(roomId: String) {
+        repository.markRoomAsRead(roomId)
+    }
+    fun onUserInputChanged(text: String) {
+        // Hiện tại không làm gì vì đã bỏ chức năng typing theo yêu cầu của bạn
+        // Nhưng giữ hàm này để các Screen gọi không bị báo lỗi đỏ
+        Log.d(TAG, "User input changed: ${text.length} chars")
     }
 
-    fun leaveRoom(roomId: String) = repository.leaveRoom(roomId)
-    fun startPrivateChat(user: User): ChatRoom = repository.ensurePrivateRoom(currentUserId, user)
-    fun disconnect() = repository.disconnect()
-    fun pinRoom(roomId: String) = repository.pinRoom(roomId)
-    fun unpinRoom(roomId: String) = repository.unpinRoom(roomId)
-    fun archiveRoom(roomId: String) = repository.archiveRoom(roomId)
-    fun muteRoom(roomId: String) = repository.muteRoom(roomId)
-    fun unmuteRoom(roomId: String) = repository.unmuteRoom(roomId)
-    fun renameGroup(roomId: String, newName: String) = repository.renameGroup(roomId, newName)
-    fun kickMember(roomId: String, userId: String) = repository.kickMember(roomId, userId)
-    fun transferAdmin(roomId: String, newAdminId: String) = repository.transferAdmin(roomId, newAdminId)
+    fun disconnect() {
+        repository.disconnect()
+    }
 }

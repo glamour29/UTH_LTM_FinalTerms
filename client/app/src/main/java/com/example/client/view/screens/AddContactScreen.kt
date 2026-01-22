@@ -16,23 +16,28 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.client.view.theme.*
-import com.example.client.viewmodel.ChatViewModel
 import com.example.client.model.data.User
+import com.example.client.view.theme.*
+import com.example.client.viewmodel.ContactViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddNewContactScreen(
-    viewModel: ChatViewModel,
+    viewModel: ContactViewModel, // Đã đổi từ ChatViewModel sang ContactViewModel
     onBack: () -> Unit
 ) {
     var phoneNumber by remember { mutableStateOf("") }
     // Lắng nghe kết quả từ ViewModel
     val searchResults by viewModel.searchResults.collectAsState()
     val isSearching by viewModel.isSearching.collectAsState()
-    
+
     // Track if search has been performed at least once
     var searchPerformed by remember { mutableStateOf(false) }
+
+    // Xóa kết quả tìm kiếm cũ mỗi khi vào màn hình
+    LaunchedEffect(Unit) {
+        viewModel.clearSearchResults()
+    }
 
     Scaffold(
         topBar = {
@@ -55,7 +60,7 @@ fun AddNewContactScreen(
             Spacer(Modifier.height(8.dp))
             OutlinedTextField(
                 value = phoneNumber,
-                onValueChange = { 
+                onValueChange = {
                     phoneNumber = it
                     if (it.isBlank()) {
                         viewModel.clearSearchResults()
@@ -73,7 +78,7 @@ fun AddNewContactScreen(
             Spacer(Modifier.height(24.dp))
 
             Button(
-                onClick = { 
+                onClick = {
                     if (phoneNumber.isNotBlank()) {
                         searchPerformed = true
                         viewModel.searchUsers(phoneNumber)
@@ -97,18 +102,19 @@ fun AddNewContactScreen(
             if (searchResults.isNotEmpty()) {
                 Text("Kết quả tìm thấy:", fontSize = 14.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(16.dp))
-                
+
                 LazyColumn {
                     items(searchResults) { user ->
-                        if (user.id != viewModel.currentUserId) {
-                            SearchResultItem(
-                                user = user,
-                                onAddFriend = { 
-                                    viewModel.sendFriendRequest(user.id)
+                        // Lưu ý: API searchUsers ở server đã tự lọc bỏ user hiện tại
+                        SearchResultItem(
+                            user = user,
+                            onAddFriend = {
+                                // Gọi API gửi lời mời, khi thành công (callback) thì mới back ra
+                                viewModel.sendFriendRequest(user.id) {
                                     onBack()
                                 }
-                            )
-                        }
+                            }
+                        )
                     }
                 }
             } else if (searchPerformed && !isSearching) {

@@ -1,6 +1,6 @@
-﻿// File: app/src/main/java/com/example/client/view/screens/NewMessageScreen.kt
-package com.example.client.view.screens
+﻿package com.example.client.view.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -22,58 +22,50 @@ import androidx.compose.ui.unit.sp
 import com.example.client.model.data.User
 import com.example.client.view.theme.*
 import com.example.client.viewmodel.ChatViewModel
+import com.example.client.viewmodel.ContactViewModel
 import kotlinx.coroutines.delay
-import androidx.compose.foundation.BorderStroke
-
-// Extension giả lập (bạn có thể thay bằng logic thật nếu có)
-val User.isOnline: Boolean
-    get() = false
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NewMessageScreen(
-    viewModel: ChatViewModel,
+    chatViewModel: ChatViewModel,       // Dùng để lấy danh sách bạn bè, tạo nhóm
+    contactViewModel: ContactViewModel, // Dùng để tìm kiếm và kết bạn
     onBack: () -> Unit,
     onUserSelected: (User) -> Unit,
     onAddContact: () -> Unit,
     onCreateGroup: (String, List<String>) -> Unit
 ) {
     var searchQuery by remember { mutableStateOf("") }
-    // coroutineScope removed (was unused)
 
-    val friends by viewModel.friends.collectAsState()
-    val pendingRequests by viewModel.pendingRequests.collectAsState()
-    val searchResults by viewModel.searchResults.collectAsState()
+    // State từ ChatViewModel (Bạn bè)
+    val friends by chatViewModel.friends.collectAsState()
+
+    // State từ ContactViewModel (Tìm kiếm & Lời mời)
+    val searchResults by contactViewModel.searchResults.collectAsState()
+    val isSearchingRemote by contactViewModel.isSearching.collectAsState()
 
     var selectedUsers by remember { mutableStateOf(setOf<String>()) }
     var showCreateGroupDialog by remember { mutableStateOf(false) }
     var groupName by remember { mutableStateOf("") }
 
-    var isSearching by remember { mutableStateOf(false) }
-    var isLoading by remember { mutableStateOf(false) }
-
-    // Debounce search
+    // Logic debounce tìm kiếm
     LaunchedEffect(searchQuery) {
         if (searchQuery.isBlank()) {
-            isSearching = false
-            isLoading = false
-            viewModel.clearSearchResults() // clear kết quả cũ nếu cần
+            contactViewModel.clearSearchResults()
             return@LaunchedEffect
         }
-
-        isLoading = true
-        isSearching = true
         delay(500) // debounce 500ms
-        viewModel.searchUsers(searchQuery)
-        isLoading = false
+        contactViewModel.searchUsers(searchQuery)
     }
 
-    // Load data ban đầu
+    // Load lại dữ liệu bạn bè khi vào màn hình
     LaunchedEffect(Unit) {
-        viewModel.refreshData()
+        chatViewModel.refreshData()
     }
 
-    val displayedUsers = if (isSearching) searchResults else friends
+    // Quyết định hiển thị list nào: Đang search thì hiện kết quả search, không thì hiện bạn bè
+    val isSearchMode = searchQuery.isNotBlank()
+    val displayedUsers = if (isSearchMode) searchResults else friends
 
     Scaffold(
         topBar = {
@@ -122,13 +114,13 @@ fun NewMessageScreen(
             // Search bar
             OutlinedTextField(
                 value = searchQuery,
-                onValueChange = { searchQuery = it.trim() },
+                onValueChange = { searchQuery = it }, // Không trim ngay để gõ space được
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp),
                 placeholder = {
                     Text(
-                        "Tìm kiếm theo tên, username hoặc số điện thoại...",
+                        "Tìm kiếm người dùng hoặc số điện thoại...",
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 },
@@ -152,72 +144,54 @@ fun NewMessageScreen(
                 singleLine = true
             )
 
-            QuickActionButtons(
-                onCreateGroup = { showCreateGroupDialog = true },
-                onAddContact = onAddContact
-            )
-
-            HorizontalDivider(
-                thickness = 1.dp,
-                color = MaterialTheme.colorScheme.surfaceVariant
-            )
+            // Chỉ hiện nút nhanh khi không search
+            if (!isSearchMode) {
+                QuickActionButtons(
+                    onCreateGroup = { showCreateGroupDialog = true },
+                    onAddContact = onAddContact
+                )
+                HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.surfaceVariant)
+            }
 
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 16.dp)
             ) {
-                // Phần lời mời kết bạn đang chờ (chỉ hiển thị khi không search)
-                if (!isSearching && pendingRequests.isNotEmpty()) {
+                // Loading indicator khi đang search API
+                if (isSearchMode && isSearchingRemote) {
                     item {
-                        SectionHeader("Lời mời kết bạn đang chờ")
-                    }
-                    items(pendingRequests) { user ->
-                        PendingRequestRow(
-                            user = user,
-                            onAccept = { viewModel.acceptFriendRequest(user.id) }
-                        )
-                    }
-                    item { Spacer(modifier = Modifier.height(16.dp)) }
-                }
-
-                // Danh sách bạn bè hoặc kết quả tìm kiếm
-                if (isLoading) {
-                    item {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(32.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
+                        Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
                             CircularProgressIndicator()
                         }
                     }
-                } else if (displayedUsers.isEmpty()) {
+                }
+                // Empty State
+                else if (displayedUsers.isEmpty()) {
                     item {
-                        if (isSearching) {
-                            EmptySearchResult()
-                        } else {
-                            EmptyContactList()
-                        }
+                        if (isSearchMode) EmptySearchResult() else EmptyContactList()
                     }
-                } else {
-                    if (!isSearching) {
-                        item {
-                            SectionHeader("Bạn bè")
-                        }
+                }
+                // List User
+                else {
+                    if (!isSearchMode) {
+                        item { SectionHeader("Bạn bè") }
+                    } else {
+                        item { SectionHeader("Kết quả tìm kiếm") }
                     }
 
                     items(displayedUsers) { user ->
+                        // Kiểm tra xem user này đã là bạn chưa (để ẩn/hiện nút kết bạn)
                         val isFriend = friends.any { it.id == user.id }
-                        val hasPending = pendingRequests.any { it.id == user.id }
+                        // Bạn cũng có thể check pending requests từ contactViewModel nếu muốn kỹ hơn
 
                         NewMessageContactRow(
                             contact = user,
                             isSelected = selectedUsers.contains(user.id),
-                            showFriendRequestButton = isSearching && !isFriend && !hasPending,
+                            // Logic hiển thị nút kết bạn: Đang search + Chưa là bạn + Không phải chính mình
+                            showFriendRequestButton = isSearchMode && !isFriend && user.id != chatViewModel.currentUserId,
                             onClick = {
                                 if (selectedUsers.isEmpty()) {
-                                    // Chọn 1 người -> mở chat ngay
+                                    // Chọn 1 người -> Chat ngay (nếu là bạn) hoặc mở chat tạm
                                     onUserSelected(user)
                                 } else {
                                     // Multi-select mode
@@ -229,8 +203,7 @@ fun NewMessageScreen(
                                 }
                             },
                             onSendFriendRequest = {
-                                viewModel.sendFriendRequest(user.id)
-                                // Optional: thông báo toast "Đã gửi lời mời" (bạn có thể thêm sau)
+                                contactViewModel.sendFriendRequest(user.id) {}
                             }
                         )
                     }
@@ -291,6 +264,8 @@ fun NewMessageScreen(
     }
 }
 
+// --- CÁC COMPOSABLE CON GIỮ NGUYÊN HOẶC CHỈNH SỬA NHỎ ---
+
 @Composable
 fun SectionHeader(title: String) {
     Text(
@@ -302,62 +277,6 @@ fun SectionHeader(title: String) {
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 12.dp)
     )
-}
-
-@Composable
-fun PendingRequestRow(
-    user: User,
-    onAccept: () -> Unit
-) {
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp),
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
-    ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Surface(
-                modifier = Modifier.size(52.dp),
-                shape = CircleShape,
-                color = TealLight
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text(
-                        user.username.firstOrNull()?.uppercase() ?: "U",
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = TealPrimary
-                    )
-                }
-            }
-
-            Spacer(Modifier.width(16.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    user.fullName.ifBlank { user.username },
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 16.sp
-                )
-                Text(
-                    "Đã gửi lời mời kết bạn",
-                    fontSize = 13.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            Button(
-                onClick = onAccept,
-                colors = ButtonDefaults.buttonColors(containerColor = TealPrimary)
-            ) {
-                Text("Chấp nhận")
-            }
-        }
-    }
 }
 
 @Composable
@@ -437,11 +356,13 @@ fun NewMessageContactRow(
                     )
                 }
                 showFriendRequestButton -> {
-                    OutlinedButton(
+                    Button(
                         onClick = onSendFriendRequest,
-                        modifier = Modifier.padding(start = 12.dp)
+                        colors = ButtonDefaults.buttonColors(containerColor = TealPrimary),
+                        contentPadding = PaddingValues(horizontal = 12.dp),
+                        modifier = Modifier.height(36.dp)
                     ) {
-                        Text("Kết bạn")
+                        Text("Kết bạn", fontSize = 12.sp)
                     }
                 }
             }
@@ -476,7 +397,7 @@ fun EmptySearchResult() {
             )
             Spacer(Modifier.height(12.dp))
             Text(
-                "Hãy thử nhập tên, username hoặc số điện thoại khác",
+                "Hãy thử nhập username hoặc số điện thoại khác",
                 fontSize = 15.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center
