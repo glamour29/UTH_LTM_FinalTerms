@@ -10,6 +10,7 @@ data class Message(
     val type: String = "TEXT",
     val createdAt: String = "", // Server đã gửi string "HH:mm" về đây rồi
     val timestamp: Long = 0L,
+    val senderName: String = "",
     val status: String = "sent"
 ) {
     companion object {

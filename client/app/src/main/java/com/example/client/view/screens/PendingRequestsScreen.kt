@@ -8,7 +8,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -20,19 +19,21 @@ import androidx.compose.ui.unit.sp
 import com.example.client.model.data.User
 import com.example.client.view.theme.TealLight
 import com.example.client.view.theme.TealPrimary
-import com.example.client.viewmodel.ChatViewModel
+import com.example.client.viewmodel.ContactViewModel // Import ContactViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PendingRequestsScreen(
-    viewModel: ChatViewModel,
+    contactViewModel: ContactViewModel, // Sử dụng ContactViewModel thay vì ChatViewModel
+    onFriendAccepted: () -> Unit,       // Callback để báo cho AppNavigation biết cần refresh list chat
     onBack: () -> Unit
 ) {
-    val pendingRequests by viewModel.pendingRequests.collectAsState()
+    // Lấy dữ liệu từ ContactViewModel
+    val pendingRequests by contactViewModel.pendingRequests.collectAsState()
 
     // Tự động load lại danh sách khi mở màn hình
     LaunchedEffect(Unit) {
-        viewModel.fetchPendingRequests()
+        contactViewModel.fetchPendingRequests()
     }
 
     Scaffold(
@@ -51,14 +52,21 @@ fun PendingRequestsScreen(
             }
         } else {
             LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(padding).background(MaterialTheme.colorScheme.background),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .background(MaterialTheme.colorScheme.background),
                 contentPadding = PaddingValues(16.dp)
             ) {
                 items(pendingRequests) { user ->
                     PendingRequestItem(
                         user = user,
-                        onAccept = { 
-                            viewModel.acceptFriendRequest(user.id)
+                        onAccept = {
+                            // Gọi hàm accept từ ContactViewModel
+                            contactViewModel.acceptFriendRequest(user.id) {
+                                // Khi API thành công -> Gọi callback này để AppNavigation refresh ChatViewModel
+                                onFriendAccepted()
+                            }
                         }
                     )
                 }
@@ -81,12 +89,14 @@ fun PendingRequestItem(user: User, onAccept: () -> Unit) {
         ) {
             Surface(Modifier.size(48.dp), shape = CircleShape, color = TealLight) {
                 Box(contentAlignment = Alignment.Center) {
-                    Text(user.username.take(1).uppercase(), fontWeight = FontWeight.Bold, color = TealPrimary)
+                    val initial = if (user.username.isNotEmpty()) user.username.take(1).uppercase() else "?"
+                    Text(initial, fontWeight = FontWeight.Bold, color = TealPrimary)
                 }
             }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(user.fullName.ifBlank { user.username }, fontWeight = FontWeight.Bold)
+                val displayName = if (user.fullName.isNotBlank()) user.fullName else user.username
+                Text(displayName, fontWeight = FontWeight.Bold)
                 Text(user.phoneNumber, fontSize = 12.sp, color = Color.Gray)
             }
             Button(

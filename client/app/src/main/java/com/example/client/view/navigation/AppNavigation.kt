@@ -2,8 +2,7 @@ package com.example.client.view.navigation
 
 import android.content.Context
 import android.net.Uri
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
@@ -13,36 +12,60 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.client.view.screens.*
 import com.example.client.viewmodel.ChatViewModel
+import com.example.client.viewmodel.ContactViewModel
+import com.example.client.model.repository.SocketRepository // Đảm bảo import đúng
 
 @Composable
 fun AppNavigation() {
     val navController = rememberNavController()
-    val chatViewModel: ChatViewModel = viewModel()
     val context = LocalContext.current
 
-    val sharedPref = context.getSharedPreferences("ChatAppPrefs", Context.MODE_PRIVATE)
+    // 1. LẤY DỮ LIỆU TỪ SHAREDPREFS TRƯỚC
+    val sharedPref = remember { context.getSharedPreferences("ChatAppPrefs", Context.MODE_PRIVATE) }
     val savedToken = sharedPref.getString("TOKEN", null)
-    val savedUserId = sharedPref.getString("USER_ID", null)
+    val savedUserId = sharedPref.getString("USER_ID", "") ?: ""
 
+    // 2. KHỞI TẠO REPOSITORY
+    // Bạn nên dùng 'remember' để repository không bị tạo lại khi giao diện recompose
+    val repository = remember { SocketRepository() }
+
+    // 3. KHỞI TẠO VIEWMODEL VỚI FACTORY (Sử dụng repository và savedUserId đã khai báo ở trên)
+    val chatViewModel: ChatViewModel = viewModel(
+        factory = object : androidx.lifecycle.ViewModelProvider.Factory {
+            override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
+                return ChatViewModel(repository, savedUserId) as T
+            }
+        }
+    )
+
+    val contactViewModel: ContactViewModel = viewModel()
+
+    // 4. THIẾT LẬP KẾT NỐI KHI APP MỞ
     LaunchedEffect(Unit) {
-        if (savedToken != null && savedUserId != null) {
+        if (savedToken != null && savedUserId.isNotBlank()) {
             chatViewModel.connect(savedToken, savedUserId)
+            contactViewModel.setToken(savedToken)
+            contactViewModel.fetchPendingRequests()
         }
     }
 
     val startDest = if (savedToken != null) "users" else "login"
 
     NavHost(navController = navController, startDestination = startDest) {
+        // ... (Các composable khác giữ nguyên như bạn đã gửi)
+
         composable("login") {
             LoginScreen(
                 onLoginSuccess = {
                     val newToken = sharedPref.getString("TOKEN", null)
-                    val newUserId = sharedPref.getString("USER_ID", null)
-                    if (newToken != null && newUserId != null) {
+                    val newUserId = sharedPref.getString("USER_ID", "") ?: ""
+                    if (newToken != null && newUserId.isNotBlank()) {
                         chatViewModel.connect(newToken, newUserId)
+                        contactViewModel.setToken(newToken)
+                        contactViewModel.fetchPendingRequests()
                     }
-                    navController.navigate("users") { 
-                        popUpTo("login") { inclusive = true } 
+                    navController.navigate("users") {
+                        popUpTo("login") { inclusive = true }
                     }
                 },
                 onNavigateToRegister = { navController.navigate("register") }
@@ -50,8 +73,14 @@ fun AppNavigation() {
         }
 
         composable("users") {
+            val pendingRequests by contactViewModel.pendingRequests.collectAsState()
+            LaunchedEffect(Unit) {
+                contactViewModel.fetchPendingRequests()
+            }
+
             UsersScreenImproved(
                 viewModel = chatViewModel,
+                pendingRequestsExternal = pendingRequests,
                 onOpenChat = { roomId, roomName, isGroup, memberCount ->
                     if (isGroup && memberCount != null) {
                         navController.navigate("group/$roomId/${Uri.encode(roomName)}/$memberCount")
@@ -69,15 +98,11 @@ fun AppNavigation() {
             ProfileScreen(
                 onBack = { navController.popBackStack() },
                 onLogout = {
-                    // 1. Xóa sạch bộ nhớ
                     with(sharedPref.edit()) {
                         clear()
                         apply()
                     }
-                    // 2. Ngắt kết nối socket
                     chatViewModel.disconnect()
-                    
-                    // 3. Quay về màn hình Login và XÓA TOÀN BỘ lịch sử màn hình cũ
                     navController.navigate("login") {
                         popUpTo(0) { inclusive = true }
                     }
@@ -85,20 +110,32 @@ fun AppNavigation() {
             )
         }
 
+        composable("register") {
+            RegisterScreen(
+                onRegisterSuccess = { navController.popBackStack() },
+                onNavigateToLogin = { navController.popBackStack() }
+            )
+        }
+
         composable("pending_requests") {
             PendingRequestsScreen(
-                viewModel = chatViewModel,
+                contactViewModel = contactViewModel,
+                onFriendAccepted = { chatViewModel.refreshRooms() },
                 onBack = { navController.popBackStack() }
             )
         }
 
         composable("add_contact") {
-            AddNewContactScreen(viewModel = chatViewModel, onBack = { navController.popBackStack() })
+            AddNewContactScreen(
+                viewModel = contactViewModel,
+                onBack = { navController.popBackStack() }
+            )
         }
 
         composable("new_message") {
             NewMessageScreen(
-                viewModel = chatViewModel,
+                chatViewModel = chatViewModel,
+                contactViewModel = contactViewModel,
                 onBack = { navController.popBackStack() },
                 onUserSelected = { user ->
                     val room = chatViewModel.startPrivateChat(user)
@@ -114,7 +151,10 @@ fun AppNavigation() {
 
         composable(
             route = "chat/{roomId}/{roomName}",
-            arguments = listOf(navArgument("roomId") { type = NavType.StringType }, navArgument("roomName") { type = NavType.StringType })
+            arguments = listOf(
+                navArgument("roomId") { type = NavType.StringType },
+                navArgument("roomName") { type = NavType.StringType }
+            )
         ) { backStackEntry ->
             ChatScreenImprovedScreen(
                 roomId = backStackEntry.arguments?.getString("roomId") ?: "",

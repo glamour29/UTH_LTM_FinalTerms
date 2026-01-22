@@ -48,12 +48,13 @@ fun MessageBubble(
         if (isImage) decodeBase64ToBitmap(message.content) else null
     }
 
-    val timeText = remember(message.timestamp, message.createdAt) {
-        if (message.createdAt.isNotBlank()) {
-            message.createdAt
-        } else if (message.timestamp > 0) {
+    val timeText = remember(message.timestamp) {
+        if (message.timestamp > 0) {
+            // Định dạng giờ:phút (Ví dụ: 14:30)
             SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(message.timestamp))
-        } else ""
+        } else {
+            ""
+        }
     }
 
     // Main bubble row

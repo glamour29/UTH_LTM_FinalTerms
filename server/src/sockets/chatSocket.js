@@ -90,9 +90,12 @@ module.exports = (io, socket) => {
     });
     
     // Get all rooms for a user
-    socket.on('list_rooms', async (userId) => {
+   socket.on('list_rooms', async (userId) => {
         try {
-            const rooms = await ChatService.getUserRooms(userId);
+          
+            const targetId = userId && userId.trim() !== "" ? userId : currentUserId;
+            
+            const rooms = await ChatService.getUserRooms(targetId);
             socket.emit('room_list', rooms);
         } catch (error) {
             console.error('[Error] Fetching rooms failed:', error.message);

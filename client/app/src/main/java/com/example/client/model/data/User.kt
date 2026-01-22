@@ -8,5 +8,6 @@ data class User(
     val username: String = "",
     val fullName: String = "",
     val avatarUrl: String = "",
-    val phoneNumber: String = ""
+    val phoneNumber: String = "",
+    val isOnline: Boolean = false
 )

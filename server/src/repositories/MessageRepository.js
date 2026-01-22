@@ -21,6 +21,13 @@ class MessageRepository extends BaseRepository {
         );
     }
 
+    // --- THÊM HÀM NÀY ĐỂ SỬA LỖI ---
+    async findByIdWithDetails(messageId) {
+        return await this.model.findById(messageId)
+            .populate('senderId', 'username fullName avatarUrl');
+    }
+    // -------------------------------
+
     async createMessage(messageData) {
         return await this.create(messageData);
     }

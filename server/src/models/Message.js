@@ -72,7 +72,6 @@ messageSchema.methods.addReaction = function(emoji, userId) {
             count: 1
         });
     }
-    
     return this.save();
 };
 
