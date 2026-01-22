@@ -269,10 +269,24 @@ class SocketRepository(
     }
 
     private fun appendMessage(message: Message) {
-        val list = messagesCache.getOrPut(message.roomId) { mutableListOf() }
-        if (list.none { it.id == message.id }) {
-            list.add(message)
-            _messagesByRoom.value = HashMap(messagesCache)
+        // 1. Lấy danh sách hiện tại hoặc tạo mới
+        val currentList = messagesCache[message.roomId] ?: mutableListOf()
+
+        // 2. Kiểm tra trùng lặp (Log id để debug nếu vẫn lỗi)
+        if (currentList.none { it.id == message.id }) {
+            currentList.add(message)
+            messagesCache[message.roomId] = currentList
+
+            // 3. Quan trọng: Tạo một bản sao mới hoàn toàn của Map
+            // và bản sao mới của List bên trong để StateFlow nhận diện thay đổi
+            val updatedMap = HashMap<String, List<Message>>()
+            messagesCache.forEach { (key, value) ->
+                updatedMap[key] = value.toList() // .toList() tạo bản sao mới của danh sách
+            }
+            _messagesByRoom.value = updatedMap
+            Log.d(TAG, "Đã cập nhật tin nhắn mới vào phòng ${message.roomId}. Tổng: ${currentList.size}")
+        } else {
+            Log.d(TAG, "Tin nhắn bị trùng ID: ${message.id}, bỏ qua.")
         }
     }
 }
