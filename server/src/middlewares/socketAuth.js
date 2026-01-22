@@ -1,27 +1,22 @@
-// src/middlewares/socketAuth.js
 const jwt = require('jsonwebtoken');
 
 const socketAuthMiddleware = (socket, next) => {
-    // 1. Lấy token từ client gửi lên (thường nằm trong handshake.auth)
-    const token = socket.handshake.auth.token;
+    let token = socket.handshake.auth.token;
 
-    if (!token) {
-        return next(new Error("❌ Không tìm thấy Token! Bạn chưa đăng nhập."));
-    }
+    if (!token) return next(new Error("❌ Thiếu Token!"));
 
     try {
-        // 2. Giải mã Token để lấy thông tin user (verify)
+        // Cắt bỏ Bearer nếu có
+        if (token.startsWith('Bearer ')) {
+            token = token.slice(7).trim();
+        }
+
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        
-        // 3. Gắn thông tin user vào biến socket để dùng sau này
-        // (Giống như đeo thẻ tên cho user)
         socket.user = decoded; 
-        
-        // 4. Cho phép đi tiếp
         next();
     } catch (err) {
-        return next(new Error("❌ Token không hợp lệ hoặc đã hết hạn!"));
+        console.error("Socket Auth Error:", err.message);
+        return next(new Error("❌ Token không hợp lệ!"));
     }
 };
-
 module.exports = socketAuthMiddleware;

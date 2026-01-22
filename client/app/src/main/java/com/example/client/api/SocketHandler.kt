@@ -8,21 +8,19 @@ import java.net.URISyntaxException
 object SocketHandler {
     lateinit var mSocket: Socket
 
-    // 👇 Link Server Socket (Giống link API)
-    private const val SOCKET_URL = "https://chat-app-0dv5.onrender.com"
+    private const val SOCKET_URL = "http://10.0.2.2:3000/"
 
     @Synchronized
     fun setSocket(token: String) {
         try {
             val options = IO.Options()
-            options.auth = mapOf("token" to token)
+            options.auth = mapOf("token" to "Bearer $token")
 
-            // 👇 THÊM CẤU HÌNH CHỐNG TIME OUT
-            options.timeout = 20000          // Chờ kết nối 20s (mặc định 20s)
+            // CẤU HÌNH CHỐNG TIME OUT
+            options.timeout = 20000          // Chờ kết nối 20s
             options.reconnection = true      // Cho phép tự kết nối lại
             options.reconnectionAttempts = 5 // Thử lại tối đa 5 lần
             options.reconnectionDelay = 2000 // Mỗi lần thử cách nhau 2s
-            // Chuyển sang dùng WebSocket luôn cho nhanh, bỏ qua polling (tùy chọn)
             options.transports = arrayOf("websocket")
 
             mSocket = IO.socket(SOCKET_URL, options)
@@ -44,7 +42,7 @@ object SocketHandler {
 
         // Lắng nghe lỗi kết nối
         mSocket.on(Socket.EVENT_CONNECT_ERROR) { args ->
-            Log.e("SOCKET_STATUS", "❌ Lỗi kết nối: ${args[0]}")
+            Log.e("SOCKET_STATUS", "❌ Lỗi kết nối Socket: ${args[0]}")
         }
     }
 
