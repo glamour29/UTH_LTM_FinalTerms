@@ -222,18 +222,32 @@ class SocketRepository(
     }
 
     // --- PARSERS ---
+    // Trong SocketRepository.kt - Tìm đến hàm parseUsersArray và sửa như sau:
+
     private fun parseUsersArray(arr: JSONArray): List<User> {
         val out = mutableListOf<User>()
         for (i in 0 until arr.length()) {
             val obj = arr.optJSONObject(i) ?: continue
             val id = obj.optString("_id").ifBlank { obj.optString("id") }
+
+            // --- ĐOẠN SỬA QUAN TRỌNG: Đọc mảng friends ---
+            val friendsJson = obj.optJSONArray("friends")
+            val friendList = mutableListOf<String>()
+            if (friendsJson != null) {
+                for (j in 0 until friendsJson.length()) {
+                    friendList.add(friendsJson.optString(j))
+                }
+            }
+            // --------------------------------------------
+
             out.add(User(
                 id = id,
                 username = obj.optString("username"),
                 fullName = obj.optString("fullName"),
                 avatarUrl = obj.optString("avatarUrl", ""),
                 phoneNumber = obj.optString("phoneNumber", ""),
-                isOnline = obj.optBoolean("isOnline", false)
+                isOnline = obj.optBoolean("isOnline", false),
+                friends = friendList // Gán mảng friendList vào User object
             ))
         }
         return out

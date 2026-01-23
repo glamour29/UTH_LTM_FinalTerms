@@ -9,5 +9,6 @@ data class User(
     val fullName: String = "",
     val avatarUrl: String = "",
     val phoneNumber: String = "",
+    val friends: List<String> = emptyList(),
     val isOnline: Boolean = false
 )
