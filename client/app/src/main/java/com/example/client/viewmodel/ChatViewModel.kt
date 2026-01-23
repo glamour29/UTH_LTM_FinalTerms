@@ -16,10 +16,17 @@ import kotlinx.coroutines.launch
 
 class ChatViewModel(
     val repository: SocketRepository,
-    val currentUserId: String
+    initialUserId: String // ID ban đầu khi khởi tạo
 ) : ViewModel() {
 
     private val TAG = "ChatViewModel"
+
+    // Sử dụng StateFlow để quản lý ID người dùng hiện tại, cho phép cập nhật khi đổi acc
+    private val _currentUserId = MutableStateFlow(initialUserId)
+    val currentUserIdState: StateFlow<String> = _currentUserId.asStateFlow()
+
+    // Getter tiện lợi để lấy ID hiện tại (vẫn giữ tên biến cũ để không hỏng code cũ)
+    val currentUserId: String get() = _currentUserId.value
 
     // Danh sách tin nhắn hiển thị trên màn hình chat
     private val _messages = MutableStateFlow<List<Message>>(emptyList())
@@ -29,25 +36,19 @@ class ChatViewModel(
     val rooms = repository.rooms
 
     /**
-     * SỬA ĐỔI: Lọc danh sách bạn bè
-     * Sử dụng toán tử lọc nghiêm ngặt để đảm bảo đồng bộ với Database.
+     * Lọc danh sách bạn bè dựa trên currentUserIdState
+     * Khi ID thay đổi, danh sách bạn bè sẽ tự động tính toán lại
      */
-    val friends: StateFlow<List<User>> = repository.users
-        .map { allUsers ->
-            // Tìm thông tin của tôi trong danh sách trả về
-            val myInfo = allUsers.find { it.id == currentUserId }
-            // Lấy danh sách ID bạn bè từ myInfo
-            val myFriendIds = myInfo?.friends ?: emptyList()
+    val friends: StateFlow<List<User>> = combine(repository.users, _currentUserId) { allUsers, userId ->
+        val myInfo = allUsers.find { it.id == userId }
+        val myFriendIds = myInfo?.friends ?: emptyList()
 
-            Log.d(TAG, "My ID: $currentUserId")
-            Log.d(TAG, "My Friends in DB: $myFriendIds")
+        Log.d(TAG, "Cập nhật danh sách bạn bè cho User: $userId")
 
-            // Lọc: Phải có ID nằm trong danh sách bạn bè của tôi
-            allUsers.filter { user ->
-                user.id != currentUserId && myFriendIds.contains(user.id)
-            }
+        allUsers.filter { user ->
+            user.id != userId && myFriendIds.contains(user.id)
         }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // ID phòng đang chat hiện tại
     var activeRoomId: String = ""
@@ -63,10 +64,18 @@ class ChatViewModel(
                 if (activeRoomId.isNotBlank()) {
                     val roomMessages = map[activeRoomId] ?: emptyList()
                     _messages.value = roomMessages
-                    Log.d(TAG, "Đã cập nhật UI cho phòng $activeRoomId: ${roomMessages.size} tin nhắn")
                 }
             }
         }
+    }
+
+    /**
+     * HÀM QUAN TRỌNG: Cập nhật thông tin khi đăng nhập tài khoản mới
+     */
+    fun updateCurrentUser(newUserId: String) {
+        Log.d(TAG, "Cập nhật User ID mới: $newUserId")
+        _currentUserId.value = newUserId
+        refreshRooms()
     }
 
     // Thiết lập phòng chat khi người dùng nhấn vào một cuộc hội thoại
@@ -79,7 +88,7 @@ class ChatViewModel(
 
     // Gửi tin nhắn văn bản
     fun sendMessage(content: String) {
-        if (activeRoomId.isBlank()) return
+        if (activeRoomId.isBlank() || currentUserId.isBlank()) return
         repository.sendMessage(
             content = content,
             roomId = activeRoomId,
@@ -87,15 +96,14 @@ class ChatViewModel(
             type = "TEXT"
         )
     }
+
     fun createNewGroup(name: String, selectedMemberIds: List<String>) {
-        // Luôn thêm chính mình vào danh sách thành viên nhóm
         val finalMembers = selectedMemberIds.toMutableList().apply {
             if (!contains(currentUserId)) add(currentUserId)
         }
 
         repository.createChatGroup(name, finalMembers)
 
-        // Đợi một chút để server xử lý xong rồi làm mới danh sách phòng
         viewModelScope.launch {
             kotlinx.coroutines.delay(800)
             refreshRooms()
@@ -104,7 +112,7 @@ class ChatViewModel(
 
     // Gửi tin nhắn hình ảnh
     fun sendImage(context: Context, uri: Uri) {
-        if (activeRoomId.isBlank()) return
+        if (activeRoomId.isBlank() || currentUserId.isBlank()) return
 
         viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -120,7 +128,6 @@ class ChatViewModel(
                         userId = currentUserId,
                         type = "IMAGE"
                     )
-                    Log.d(TAG, "Gửi ảnh thành công")
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Lỗi xử lý ảnh: ${e.message}")
@@ -143,6 +150,7 @@ class ChatViewModel(
     }
 
     fun connect(token: String, userId: String) {
+        updateCurrentUser(userId) // Cập nhật ID khi kết nối
         repository.connect(token)
     }
 
@@ -156,7 +164,6 @@ class ChatViewModel(
     // Làm mới dữ liệu
     fun refreshData() {
         refreshRooms()
-        // Kích hoạt server gửi lại danh sách người dùng và trạng thái bạn bè
         repository.requestOnlineUsers()
     }
 
@@ -164,7 +171,6 @@ class ChatViewModel(
         setActiveRoom(room.id, room.name)
     }
 
-    // Tạo nhóm chat
     fun createGroup(name: String, memberIds: List<String>): ChatRoom {
         val room = repository.createGroup(name, memberIds)
         refreshRooms()
@@ -176,10 +182,11 @@ class ChatViewModel(
     }
 
     fun onUserInputChanged(text: String) {
-        Log.d(TAG, "User input changed")
+        // Logic xử lý khi người dùng đang nhập (typing...) nếu cần
     }
 
     fun disconnect() {
         repository.disconnect()
+        _currentUserId.value = "" // Xóa ID khi ngắt kết nối
     }
 }

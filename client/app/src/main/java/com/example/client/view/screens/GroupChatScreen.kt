@@ -1,5 +1,4 @@
-﻿// kotlin
-@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+﻿@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 
 package com.example.client.view.screens
 
@@ -41,6 +40,8 @@ fun GroupChatScreen(
     onBack: () -> Unit
 ) {
     val messages by viewModel.messages.collectAsState()
+    val currentUserId = viewModel.currentUserId // Lấy ID của user hiện tại
+
     var textState by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
     val context = LocalContext.current
@@ -50,6 +51,7 @@ fun GroupChatScreen(
         viewModel.markRoomAsRead(roomId)
     }
 
+    // Tự động cuộn xuống cuối khi có tin nhắn mới
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) {
             delay(100)
@@ -82,12 +84,14 @@ fun GroupChatScreen(
             LazyColumn(
                 modifier = Modifier.weight(1f),
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-                state = listState
+                state = listState,
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(messages, key = { it.id }) { message ->
+                    // Cập nhật quan trọng: Truyền currentUserId để xác định vị trí chính xác
                     MessageBubble(
                         message = message,
-                        isMe = message.senderId == viewModel.currentUserId,
+                        currentUserId = currentUserId,
                         onSeen = { viewModel.markAsSeen(message) }
                     )
                 }
@@ -130,7 +134,7 @@ private fun ChatTopBar(
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Text(
-                            text = roomName.firstOrNull()?.uppercase() ?: "C",
+                            text = roomName.firstOrNull()?.uppercase() ?: "G",
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Bold,
                             color = TealPrimary
@@ -152,8 +156,8 @@ private fun ChatTopBar(
             }
         },
         actions = {
-            IconButton(onClick = { /* More options */ }) {
-                Icon(Icons.Default.MoreVert, "More", tint = MaterialTheme.colorScheme.onSurface)
+            IconButton(onClick = { /* Group settings */ }) {
+                Icon(Icons.Default.Info, "Info", tint = MaterialTheme.colorScheme.onSurface)
             }
         },
         colors = TopAppBarDefaults.topAppBarColors(
@@ -178,16 +182,29 @@ private fun ChatInputArea(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.Bottom
+                .padding(horizontal = 16.dp, vertical = 12.dp)
+                .navigationBarsPadding()
+                .imePadding(),
+            verticalAlignment = Alignment.CenterVertically
         ) {
+            IconButton(onClick = onImageClick) {
+                Icon(
+                    Icons.Default.AddPhotoAlternate,
+                    contentDescription = "Image",
+                    tint = TealPrimary,
+                    modifier = Modifier.size(26.dp)
+                )
+            }
+
+            Spacer(Modifier.width(4.dp))
+
             OutlinedTextField(
                 value = textState,
                 onValueChange = onTextChange,
                 modifier = Modifier.weight(1f),
                 placeholder = {
                     Text(
-                        "Type message..",
+                        "Nhập tin nhắn nhóm...",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 14.sp
                     )
@@ -199,31 +216,25 @@ private fun ChatInputArea(
                     focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
                     unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant
                 ),
-                trailingIcon = {
-                    IconButton(onClick = onImageClick) {
-                        Icon(
-                            Icons.Default.Add,
-                            contentDescription = "Add",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                },
                 maxLines = 4
             )
 
             Spacer(Modifier.width(8.dp))
 
-            FloatingActionButton(
+            IconButton(
                 onClick = onSendClick,
-                modifier = Modifier.size(48.dp),
-                containerColor = TealPrimary,
-                shape = CircleShape
+                enabled = textState.isNotBlank(),
+                modifier = Modifier
+                    .size(40.dp)
+                    .background(
+                        color = if (textState.isNotBlank()) TealPrimary else Color.Transparent,
+                        shape = CircleShape
+                    )
             ) {
                 Icon(
                     Icons.Default.Send,
                     contentDescription = "Send",
-                    tint = Color.White,
+                    tint = if (textState.isNotBlank()) Color.White else Color.Gray,
                     modifier = Modifier.size(20.dp)
                 )
             }

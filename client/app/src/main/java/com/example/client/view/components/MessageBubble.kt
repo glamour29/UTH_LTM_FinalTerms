@@ -1,6 +1,5 @@
 ﻿package com.example.client.view.components
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -28,21 +27,32 @@ import java.util.*
 @Composable
 fun MessageBubble(
     message: Message,
-    isMe: Boolean,
+    currentUserId: String, // Thay đổi quan trọng: Truyền ID của user hiện tại vào đây
     onSeen: () -> Unit = {}
 ) {
-    LaunchedEffect(Unit) {
+    // Xác định trực tiếp dựa trên senderId và currentUserId
+    // Việc này giúp tránh lỗi khi Re-login bằng acc khác
+    val isMe = remember(message.senderId, currentUserId) {
+        message.senderId == currentUserId
+    }
+
+    LaunchedEffect(isMe) {
         if (!isMe) onSeen()
     }
 
-    val isImage = message.type.equals("image", ignoreCase = true) ||
-            message.content.startsWith("data:image")
+    val isImage = remember(message.content) {
+        message.type.equals("image", ignoreCase = true) ||
+                message.content.startsWith("data:image")
+    }
 
-    val isVoice = message.type.equals("voice", ignoreCase = true) ||
-            message.content.startsWith("voice:")
+    val isVoice = remember(message.type, message.content) {
+        message.type.equals("voice", ignoreCase = true) ||
+                message.content.startsWith("voice:")
+    }
+
     val displayText = if (isVoice) "Voice message" else message.content
 
-    val imageBitmap = remember(message.content) {
+    val imageBitmap = remember(message.content, isImage) {
         if (isImage) decodeBase64ToBitmap(message.content) else null
     }
 
@@ -54,21 +64,19 @@ fun MessageBubble(
         }
     }
 
-    // Luồng hiển thị chính
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        // Căn toàn bộ Column sang phải nếu là mình, sang trái nếu là người khác
+            .padding(vertical = 4.dp, horizontal = 8.dp),
+        // Cố định: Tin nhắn của mình luôn sang phải (End), người khác bên trái (Start)
         horizontalAlignment = if (isMe) Alignment.End else Alignment.Start
     ) {
         Row(
-            modifier = Modifier.widthIn(max = 300.dp),
+            modifier = Modifier.widthIn(max = 320.dp), // Tăng độ rộng tối đa một chút
             verticalAlignment = Alignment.Bottom,
-            // Nếu là mình thì đẩy content sang cuối Row
             horizontalArrangement = if (isMe) Arrangement.End else Arrangement.Start
         ) {
-            // Avatar cho người khác (nằm bên trái tin nhắn)
+            // Hiển thị Avatar nếu KHÔNG PHẢI là mình
             if (!isMe) {
                 Surface(
                     modifier = Modifier.size(32.dp),
@@ -87,40 +95,36 @@ fun MessageBubble(
                 Spacer(Modifier.width(8.dp))
             }
 
-            // Bubble tin nhắn
+            // Nội dung tin nhắn
             Surface(
                 shape = RoundedCornerShape(
                     topStart = 16.dp,
                     topEnd = 16.dp,
-                    bottomStart = if (isMe) 16.dp else 4.dp, // Đuôi tin nhắn hướng trái cho người khác
-                    bottomEnd = if (isMe) 4.dp else 16.dp    // Đuôi tin nhắn hướng phải cho mình
+                    bottomStart = if (isMe) 16.dp else 4.dp,
+                    bottomEnd = if (isMe) 4.dp else 16.dp
                 ),
-                // Màu Teal cho mình, Xám nhạt cho người khác
                 color = when {
                     isImage -> Color.Transparent
-                    isMe -> TealPrimary
-                    else -> Color(0xFFF1F1F1)
+                    isMe -> TealPrimary // Màu thương hiệu cho mình
+                    else -> Color(0xFFE9E9EB) // Màu xám nhạt trung tính cho người khác
                 },
-                shadowElevation = if (isImage) 0.dp else 1.dp
+                shadowElevation = if (isImage) 0.dp else 0.5.dp
             ) {
                 when {
-                    isImage -> {
-                        if (imageBitmap != null) {
-                            AsyncImage(
-                                model = imageBitmap,
-                                contentDescription = "Image",
-                                modifier = Modifier
-                                    .widthIn(max = 250.dp)
-                                    .heightIn(max = 400.dp)
-                                    .clip(RoundedCornerShape(12.dp)),
-                                contentScale = ContentScale.Crop
-                            )
-                        }
+                    isImage && imageBitmap != null -> {
+                        AsyncImage(
+                            model = imageBitmap,
+                            contentDescription = "Image message",
+                            modifier = Modifier
+                                .widthIn(max = 240.dp)
+                                .heightIn(max = 320.dp)
+                                .clip(RoundedCornerShape(12.dp)),
+                            contentScale = ContentScale.Fit
+                        )
                     }
                     else -> {
                         Text(
                             text = displayText,
-                            // Chữ trắng trên nền Teal (của mình), chữ đen trên nền xám (người khác)
                             color = if (isMe) Color.White else Color.Black,
                             fontSize = 15.sp,
                             modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
@@ -130,7 +134,7 @@ fun MessageBubble(
             }
         }
 
-        // Hiển thị thời gian bên dưới bubble
+        // Thời gian gửi tin nhắn
         if (timeText.isNotEmpty()) {
             Text(
                 text = timeText,
@@ -138,8 +142,8 @@ fun MessageBubble(
                 color = Color.Gray,
                 modifier = Modifier.padding(
                     top = 2.dp,
-                    start = if (isMe) 0.dp else 40.dp, // Đẩy lề để tránh đè Avatar
-                    end = if (isMe) 8.dp else 0.dp
+                    start = if (isMe) 0.dp else 40.dp, // Tránh đè lên Avatar
+                    end = if (isMe) 4.dp else 0.dp
                 )
             )
         }

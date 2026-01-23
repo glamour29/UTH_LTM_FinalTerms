@@ -64,7 +64,7 @@ exports.acceptFriendRequest = async (req, res) => {
         const { userId } = req.body; // ID người gửi lời mời
         const myId = req.user.userId;
 
-        console.log(`🤝 Chấp nhận kết bạn: ${myId} với ${userId}`);
+        console.log(` Chấp nhận kết bạn: ${myId} với ${userId}`);
 
         // A. Cập nhật danh sách bạn bè (2 chiều)
         await User.findByIdAndUpdate(myId, { 
@@ -79,7 +79,7 @@ exports.acceptFriendRequest = async (req, res) => {
         // ChatService đã có hàm createOrGetPrivateRoom chuẩn, ta dùng lại nó
         const room = await ChatService.createOrGetPrivateRoom(myId, userId);
 
-        console.log(`✅ Phòng chat đã sẵn sàng: ${room._id}`);
+        console.log(` Phòng chat đã sẵn sàng: ${room._id}`);
 
         res.status(200).json({ 
             success: true, 
@@ -87,7 +87,7 @@ exports.acceptFriendRequest = async (req, res) => {
             roomId: room._id 
         });
     } catch (error) {
-        console.error("❌ Lỗi chấp nhận kết bạn:", error);
+        console.error(" Lỗi chấp nhận kết bạn:", error);
         res.status(500).json({ message: error.message });
     }
 };

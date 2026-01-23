@@ -39,6 +39,9 @@ fun ChatScreenImprovedScreen(
     val rooms by viewModel.rooms.collectAsState()
     val currentRoom = rooms.find { it.id == roomId }
 
+    // Lấy UserId hiện tại từ ViewModel
+    val currentUserId = viewModel.currentUserId
+
     var textState by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
     val context = LocalContext.current
@@ -79,7 +82,7 @@ fun ChatScreenImprovedScreen(
                 .padding(paddingValues)
                 .background(MaterialTheme.colorScheme.background)
         ) {
-            // Danh sách tin nhắn hiển thị trái/phải
+            // Danh sách tin nhắn
             LazyColumn(
                 modifier = Modifier.weight(1f),
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 16.dp),
@@ -87,23 +90,16 @@ fun ChatScreenImprovedScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(messages, key = { it.id }) { message ->
-                    val isMe = message.senderId == viewModel.currentUserId
-
-                    // Box bao quanh để căn lề trái/phải cho cả text và image
-                    Box(
-                        modifier = Modifier.fillMaxWidth(),
-                        contentAlignment = if (isMe) Alignment.CenterEnd else Alignment.CenterStart
-                    ) {
-                        MessageBubble(
-                            message = message,
-                            isMe = isMe,
-                            onSeen = { viewModel.markAsSeen(message) }
-                        )
-                    }
+                    // Quan trọng: Truyền currentUserId để MessageBubble tự xác định trái/phải
+                    MessageBubble(
+                        message = message,
+                        currentUserId = currentUserId,
+                        onSeen = { viewModel.markAsSeen(message) }
+                    )
                 }
             }
 
-            // Thanh nhập liệu tích hợp nút gửi ảnh
+            // Thanh nhập liệu
             ChatInputArea(
                 textState = textState,
                 onTextChange = {
@@ -145,12 +141,22 @@ private fun ChatTopBar(roomName: String, isGroup: Boolean, onBack: () -> Unit) {
                     }
                 }
                 Spacer(Modifier.width(10.dp))
-                Text(text = roomName, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                Text(
+                    text = roomName,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 17.sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
             }
         },
         navigationIcon = {
-            IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Back") }
-        }
+            IconButton(onClick = onBack) {
+                Icon(Icons.Default.ArrowBack, "Back")
+            }
+        },
+        colors = TopAppBarDefaults.topAppBarColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        )
     )
 }
 
@@ -161,7 +167,11 @@ private fun ChatInputArea(
     onSendClick: () -> Unit,
     onImageClick: () -> Unit
 ) {
-    Surface(modifier = Modifier.fillMaxWidth(), shadowElevation = 8.dp) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shadowElevation = 8.dp,
+        color = MaterialTheme.colorScheme.surface
+    ) {
         Row(
             modifier = Modifier
                 .padding(horizontal = 8.dp, vertical = 8.dp)
@@ -169,7 +179,6 @@ private fun ChatInputArea(
                 .imePadding(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Nút chọn ảnh
             IconButton(onClick = onImageClick) {
                 Icon(Icons.Default.AddPhotoAlternate, "Gửi ảnh", tint = TealPrimary)
             }
