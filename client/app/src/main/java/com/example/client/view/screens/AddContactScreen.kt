@@ -23,20 +23,23 @@ import com.example.client.viewmodel.ContactViewModel
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddNewContactScreen(
-    viewModel: ContactViewModel, // Đã đổi từ ChatViewModel sang ContactViewModel
+    viewModel: ContactViewModel,
     onBack: () -> Unit
 ) {
-    var phoneNumber by remember { mutableStateOf("") }
-    // Lắng nghe kết quả từ ViewModel
+    var searchQuery by remember { mutableStateOf("") }
+
+    // Quan sát dữ liệu từ ViewModel
     val searchResults by viewModel.searchResults.collectAsState()
     val isSearching by viewModel.isSearching.collectAsState()
 
-    // Track if search has been performed at least once
+    // Biến để kiểm soát việc đã bấm nút tìm kiếm hay chưa
     var searchPerformed by remember { mutableStateOf(false) }
 
-    // Xóa kết quả tìm kiếm cũ mỗi khi vào màn hình
-    LaunchedEffect(Unit) {
-        viewModel.clearSearchResults()
+    // Xóa kết quả cũ khi thoát/vào màn hình
+    DisposableEffect(Unit) {
+        onDispose {
+            viewModel.clearSearchResults()
+        }
     }
 
     Scaffold(
@@ -44,8 +47,9 @@ fun AddNewContactScreen(
             TopAppBar(
                 title = { Text("Thêm bạn bè", fontWeight = FontWeight.SemiBold, fontSize = 18.sp) },
                 navigationIcon = {
-                    IconButton(onClick = onBack) { Icon(Icons.Default.Close, null) }
-                }
+                    IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, null) }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
             )
         }
     ) { paddingValues ->
@@ -56,70 +60,111 @@ fun AddNewContactScreen(
                 .background(MaterialTheme.colorScheme.background)
                 .padding(24.dp)
         ) {
-            Text("Nhập số điện thoại để tìm kiếm", fontSize = 14.sp, color = Color.Gray)
+            Text(
+                "Tìm kiếm người dùng",
+                fontSize = 14.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
             Spacer(Modifier.height(8.dp))
+
             OutlinedTextField(
-                value = phoneNumber,
+                value = searchQuery,
                 onValueChange = {
-                    phoneNumber = it
+                    searchQuery = it
                     if (it.isBlank()) {
                         viewModel.clearSearchResults()
                         searchPerformed = false
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("Ví dụ: 09123...") },
-                leadingIcon = { Text(" +84", fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp)) },
+                placeholder = { Text("Nhập số điện thoại hoặc username...") },
+                leadingIcon = {
+                    Icon(Icons.Default.PersonSearch, contentDescription = null, tint = TealPrimary)
+                },
+                trailingIcon = {
+                    if (searchQuery.isNotEmpty()) {
+                        IconButton(onClick = {
+                            searchQuery = ""
+                            viewModel.clearSearchResults()
+                            searchPerformed = false
+                        }) {
+                            Icon(Icons.Default.Close, contentDescription = "Xóa")
+                        }
+                    }
+                },
                 shape = RoundedCornerShape(12.dp),
                 singleLine = true,
-                enabled = !isSearching
+                enabled = !isSearching,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = TealPrimary,
+                    cursorColor = TealPrimary
+                )
             )
 
             Spacer(Modifier.height(24.dp))
 
             Button(
                 onClick = {
-                    if (phoneNumber.isNotBlank()) {
+                    val query = searchQuery.trim()
+                    if (query.isNotEmpty()) {
                         searchPerformed = true
-                        viewModel.searchUsers(phoneNumber)
+                        viewModel.searchUsers(query)
                     }
                 },
-                modifier = Modifier.fillMaxWidth().height(56.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = TealPrimary),
-                shape = RoundedCornerShape(16.dp),
-                enabled = !isSearching && phoneNumber.isNotBlank()
+                shape = RoundedCornerShape(12.dp),
+                enabled = !isSearching && searchQuery.trim().isNotEmpty()
             ) {
                 if (isSearching) {
-                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
+                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
                 } else {
-                    Text("TÌM KIẾM", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text("TÌM KIẾM", fontSize = 15.sp, fontWeight = FontWeight.Bold)
                 }
             }
 
             Spacer(Modifier.height(32.dp))
 
-            // HIỂN THỊ KẾT QUẢ TÌM KIẾM
-            if (searchResults.isNotEmpty()) {
-                Text("Kết quả tìm thấy:", fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(16.dp))
-
-                LazyColumn {
-                    items(searchResults) { user ->
-                        // Lưu ý: API searchUsers ở server đã tự lọc bỏ user hiện tại
-                        SearchResultItem(
-                            user = user,
-                            onAddFriend = {
-                                // Gọi API gửi lời mời, khi thành công (callback) thì mới back ra
-                                viewModel.sendFriendRequest(user.id) {
-                                    onBack()
-                                }
-                            }
+            // HIỂN THỊ KẾT QUẢ
+            Box(modifier = Modifier.fillMaxSize()) {
+                if (searchResults.isNotEmpty()) {
+                    Column {
+                        Text(
+                            "Kết quả tìm thấy",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TealPrimary
                         )
+                        Spacer(Modifier.height(16.dp))
+                        LazyColumn(
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(searchResults) { user ->
+                                SearchResultItem(
+                                    user = user,
+                                    onAddFriend = {
+                                        viewModel.sendFriendRequest(user.id) {
+                                            // Sau khi gửi lời mời có thể quay lại hoặc hiện thông báo
+                                            onBack()
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                    }
+                } else if (searchPerformed && !isSearching) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(top = 40.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(Icons.Default.SentimentDissatisfied, null, modifier = Modifier.size(64.dp), tint = Color.LightGray)
+                        Spacer(Modifier.height(16.dp))
+                        Text("Không tìm thấy người dùng này", color = Color.Gray)
                     }
                 }
-            } else if (searchPerformed && !isSearching) {
-                // Chỉ hiện thông báo này khi đã search xong và không có kết quả
-                Text("Không tìm thấy người dùng này", color = Color.Red, fontSize = 14.sp)
             }
         }
     }
@@ -128,35 +173,64 @@ fun AddNewContactScreen(
 @Composable
 fun SearchResultItem(user: User, onAddFriend: () -> Unit) {
     Surface(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-        color = Color.White,
-        shape = RoundedCornerShape(12.dp),
-        shadowElevation = 2.dp
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(16.dp),
+        shadowElevation = 1.dp,
+        border = androidx.compose.foundation.BorderStroke(0.5.dp, Color.LightGray.copy(alpha = 0.5f))
     ) {
         Row(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Surface(modifier = Modifier.size(48.dp), shape = CircleShape, color = TealLight) {
+            // Avatar
+            Surface(modifier = Modifier.size(50.dp), shape = CircleShape, color = TealLight) {
                 Box(contentAlignment = Alignment.Center) {
-                    Text(user.username.take(1).uppercase(), fontWeight = FontWeight.Bold, color = TealPrimary)
+                    Text(
+                        text = user.username.take(1).uppercase(),
+                        fontWeight = FontWeight.Bold,
+                        color = TealPrimary,
+                        fontSize = 20.sp
+                    )
                 }
             }
-            Spacer(Modifier.width(12.dp))
+
+            Spacer(Modifier.width(16.dp))
+
             Column(modifier = Modifier.weight(1f)) {
-                Text(user.fullName.ifBlank { user.username }, fontWeight = FontWeight.SemiBold)
-                if (user.phoneNumber.isNotBlank()) {
-                    Text(user.phoneNumber, fontSize = 12.sp, color = TealPrimary)
-                } else {
-                    Text("@${user.username}", fontSize = 12.sp, color = Color.Gray)
-                }
+                Text(
+                    text = user.fullName.ifBlank { user.username },
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp
+                )
+                Text(
+                    text = if (user.phoneNumber.isNotBlank()) user.phoneNumber else "@${user.username}",
+                    fontSize = 13.sp,
+                    color = Color.Gray
+                )
             }
-            Button(
-                onClick = onAddFriend,
-                colors = ButtonDefaults.buttonColors(containerColor = TealPrimary),
-                contentPadding = PaddingValues(horizontal = 12.dp)
-            ) {
-                Text("Kết bạn", fontSize = 12.sp)
+
+            // LOGIC KIỂM TRA TRẠNG THÁI BẠN BÈ
+            if (user.isFriend) {
+                // Đã là bạn bè
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 8.dp)
+                ) {
+                    Icon(Icons.Default.Check, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Đã kết bạn", fontSize = 13.sp, color = Color.Gray)
+                }
+            } else {
+                // Chưa là bạn bè
+                Button(
+                    onClick = onAddFriend,
+                    colors = ButtonDefaults.buttonColors(containerColor = TealPrimary),
+                    shape = RoundedCornerShape(8.dp),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    Text("Kết bạn", fontSize = 12.sp)
+                }
             }
         }
     }

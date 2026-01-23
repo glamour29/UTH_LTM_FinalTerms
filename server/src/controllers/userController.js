@@ -112,23 +112,42 @@ exports.getFriends = async (req, res) => {
     }
 };
 
-// 7. Tìm kiếm user
 exports.searchUsers = async (req, res) => {
     try {
-        const query = req.query.q;
-        if (!query) return res.json([]);
-        
-        // Tìm user trừ bản thân mình
+        const { query } = req.query;
+        const currentUserId = req.user.userId;
+
+        if (!query || query.trim() === "") {
+            return res.status(200).json([]);
+        }
+
+        const searchKey = query.trim();
+
+        // 1. Tìm thông tin của chính mình để lấy danh sách bạn bè
+        const me = await User.findById(currentUserId).select('friends');
+        const myFriendIds = me.friends.map(id => id.toString());
+
+        // 2. Tìm kiếm người dùng theo SĐT hoặc Username
         const users = await User.find({
-            _id: { $ne: req.user.userId },
-            $or: [
-                { username: { $regex: query, $options: 'i' } },
-                { phoneNumber: { $regex: query, $options: 'i' } },
-                { fullName: { $regex: query, $options: 'i' } }
+            $and: [
+                { _id: { $ne: currentUserId } },
+                {
+                    $or: [
+                        { phoneNumber: searchKey },
+                        { username: { $regex: searchKey, $options: 'i' } }
+                    ]
+                }
             ]
-        }).select('username fullName avatarUrl phoneNumber');
-        
-        res.json(users);
+        }).select('username fullName phoneNumber avatarUrl isOnline');
+
+        // 3. Gắn thêm trạng thái isFriend cho từng kết quả
+        const results = users.map(user => {
+            const userObj = user.toObject();
+            userObj.isFriend = myFriendIds.includes(user._id.toString());
+            return userObj;
+        });
+
+        res.status(200).json(results);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }

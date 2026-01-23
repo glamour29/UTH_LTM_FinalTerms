@@ -6,9 +6,11 @@ const authMiddleware = require("../middlewares/authHTTP");
 // 1. Thêm route GET này để xử lý tìm kiếm (api/users?search=...)
 // Quan trọng: Phải là router.get và đường dẫn là '/'
 router.get("/", authMiddleware, userController.getUsers);
+router.get("/search", authMiddleware, userController.searchUsers);
 
 // 2. Giữ nguyên route update cũ của bạn
 router.put("/update", authMiddleware, userController.updateProfile);
+
 
 // Lấy danh sách bạn bè
 router.get('/friends', authMiddleware, userController.getFriends);

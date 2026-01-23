@@ -1,5 +1,6 @@
 package com.example.client.viewmodel
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.client.model.ApiService
@@ -29,18 +30,21 @@ class ContactViewModel : ViewModel() {
         this.authToken = token
     }
 
-    // Tìm kiếm User
-    fun searchUsers(query: String) {
-        if (query.isBlank()) return
-        viewModelScope.launch(Dispatchers.IO) {
+    // --- SỬA HÀM TÌM KIẾM TẠI ĐÂY ---
+    fun searchUsers(phoneNumber: String) {
+        val cleanQuery = phoneNumber.trim() // Xóa khoảng trắng 2 đầu
+        if (cleanQuery.isEmpty()) return
+
+        viewModelScope.launch {
             _isSearching.value = true
             try {
-                // Gọi API search
-                val results = apiService.searchUsers("Bearer $authToken", query)
-                _searchResults.value = results
+                // Gửi tham số "query" thay vì "phone"
+                val response = apiService.searchUsers("Bearer $authToken", cleanQuery)
+                if (response.isSuccessful) {
+                    _searchResults.value = response.body() ?: emptyList()
+                }
             } catch (e: Exception) {
-                e.printStackTrace()
-                _searchResults.value = emptyList()
+                Log.e("ContactVM", "Search failed: ${e.message}")
             } finally {
                 _isSearching.value = false
             }
@@ -51,18 +55,14 @@ class ContactViewModel : ViewModel() {
         _searchResults.value = emptyList()
     }
 
-    // Gửi lời mời kết bạn
     fun sendFriendRequest(userId: String, onSuccess: () -> Unit) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val response = apiService.sendFriendRequest("Bearer $authToken", FriendRequest(userId))
                 if (response.success) {
-                    // Xóa khỏi list tìm kiếm để cập nhật UI
                     val currentList = _searchResults.value.toMutableList()
                     currentList.removeIf { it.id == userId }
                     _searchResults.value = currentList
-
-                    // Gọi callback thành công
                     launch(Dispatchers.Main) { onSuccess() }
                 }
             } catch (e: Exception) {
@@ -82,20 +82,12 @@ class ContactViewModel : ViewModel() {
         }
     }
 
-
-    // Chấp nhận kết bạn - QUAN TRỌNG
     fun acceptFriendRequest(userId: String, onSuccess: () -> Unit) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                // 1. Gọi API
                 val response = apiService.acceptFriendRequest("Bearer $authToken", FriendRequest(userId))
-
-                // 2. Nếu Server trả về success = true
                 if (response.success) {
-                    // Refresh lại list chờ
                     fetchPendingRequests()
-
-                    // 3. Kích hoạt Callback để AppNavigation biết mà refresh ChatViewModel
                     launch(Dispatchers.Main) { onSuccess() }
                 }
             } catch (e: Exception) {
