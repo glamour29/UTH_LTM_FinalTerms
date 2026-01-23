@@ -200,6 +200,17 @@ class SocketRepository(
         socket?.emit("create_group", payload)
         return ChatRoom(id = "temp", name = name, isGroup = true)
     }
+    // Thêm vào SocketRepository.kt
+    fun createChatGroup(name: String, memberIds: List<String>) {
+        val payload = JSONObject().apply {
+            put("name", name)
+            put("members", JSONArray(memberIds))
+            put("isGroup", true)
+        }
+        // Gửi sự kiện tạo nhóm tới Server
+        socket?.emit("create_group", payload)
+        Log.d("SocketRepo", "Đã gửi yêu cầu tạo nhóm mới: $name")
+    }
     fun leaveRoom(roomId: String) = socket?.emit("leave_room", JSONObject().put("roomId", roomId))
     fun pinRoom(roomId: String) = socket?.emit("pin_room", JSONObject().put("roomId", roomId))
     fun muteRoom(roomId: String) = socket?.emit("mute_room", JSONObject().put("roomId", roomId))
@@ -222,18 +233,32 @@ class SocketRepository(
     }
 
     // --- PARSERS ---
+    // Trong SocketRepository.kt - Tìm đến hàm parseUsersArray và sửa như sau:
+
     private fun parseUsersArray(arr: JSONArray): List<User> {
         val out = mutableListOf<User>()
         for (i in 0 until arr.length()) {
             val obj = arr.optJSONObject(i) ?: continue
             val id = obj.optString("_id").ifBlank { obj.optString("id") }
+
+            // --- ĐOẠN SỬA QUAN TRỌNG: Đọc mảng friends ---
+            val friendsJson = obj.optJSONArray("friends")
+            val friendList = mutableListOf<String>()
+            if (friendsJson != null) {
+                for (j in 0 until friendsJson.length()) {
+                    friendList.add(friendsJson.optString(j))
+                }
+            }
+            // --------------------------------------------
+
             out.add(User(
                 id = id,
                 username = obj.optString("username"),
                 fullName = obj.optString("fullName"),
                 avatarUrl = obj.optString("avatarUrl", ""),
                 phoneNumber = obj.optString("phoneNumber", ""),
-                isOnline = obj.optBoolean("isOnline", false)
+                isOnline = obj.optBoolean("isOnline", false),
+                friends = friendList // Gán mảng friendList vào User object
             ))
         }
         return out
