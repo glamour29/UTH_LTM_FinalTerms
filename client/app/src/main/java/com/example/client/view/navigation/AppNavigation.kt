@@ -13,23 +13,22 @@ import androidx.navigation.navArgument
 import com.example.client.view.screens.*
 import com.example.client.viewmodel.ChatViewModel
 import com.example.client.viewmodel.ContactViewModel
-import com.example.client.model.repository.SocketRepository // Đảm bảo import đúng
+import com.example.client.model.repository.SocketRepository
 
 @Composable
 fun AppNavigation() {
     val navController = rememberNavController()
     val context = LocalContext.current
 
-    // 1. LẤY DỮ LIỆU TỪ SHAREDPREFS TRƯỚC
+    // 1. Lấy dữ liệu từ SharedPreferences
     val sharedPref = remember { context.getSharedPreferences("ChatAppPrefs", Context.MODE_PRIVATE) }
     val savedToken = sharedPref.getString("TOKEN", null)
     val savedUserId = sharedPref.getString("USER_ID", "") ?: ""
 
-    // 2. KHỞI TẠO REPOSITORY
-    // Bạn nên dùng 'remember' để repository không bị tạo lại khi giao diện recompose
+    // 2. Khởi tạo Repository (Dùng remember để tránh khởi tạo lại)
     val repository = remember { SocketRepository() }
 
-    // 3. KHỞI TẠO VIEWMODEL VỚI FACTORY (Sử dụng repository và savedUserId đã khai báo ở trên)
+    // 3. Khởi tạo ViewModels
     val chatViewModel: ChatViewModel = viewModel(
         factory = object : androidx.lifecycle.ViewModelProvider.Factory {
             override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
@@ -37,10 +36,9 @@ fun AppNavigation() {
             }
         }
     )
-
     val contactViewModel: ContactViewModel = viewModel()
 
-    // 4. THIẾT LẬP KẾT NỐI KHI APP MỞ
+    // 4. Thiết lập kết nối khi mở App
     LaunchedEffect(Unit) {
         if (savedToken != null && savedUserId.isNotBlank()) {
             chatViewModel.connect(savedToken, savedUserId)
@@ -52,7 +50,6 @@ fun AppNavigation() {
     val startDest = if (savedToken != null) "users" else "login"
 
     NavHost(navController = navController, startDestination = startDest) {
-        // ... (Các composable khác giữ nguyên như bạn đã gửi)
 
         composable("login") {
             LoginScreen(
@@ -82,9 +79,11 @@ fun AppNavigation() {
                 viewModel = chatViewModel,
                 pendingRequestsExternal = pendingRequests,
                 onOpenChat = { roomId, roomName, isGroup, memberCount ->
-                    if (isGroup && memberCount != null) {
-                        navController.navigate("group/$roomId/${Uri.encode(roomName)}/$memberCount")
+                    if (isGroup) {
+                        // Điều hướng đến màn hình chat nhóm
+                        navController.navigate("group/$roomId/${Uri.encode(roomName)}/${memberCount ?: 0}")
                     } else {
+                        // Điều hướng đến màn hình chat 1-1
                         navController.navigate("chat/$roomId/${Uri.encode(roomName)}")
                     }
                 },
@@ -94,18 +93,61 @@ fun AppNavigation() {
             )
         }
 
+        composable("new_message") {
+            NewMessageScreen(
+                chatViewModel = chatViewModel,
+                contactViewModel = contactViewModel,
+                onBack = { navController.popBackStack() },
+                onUserSelected = { user ->
+                    val room = chatViewModel.startPrivateChat(user)
+                    navController.navigate("chat/${room.id}/${Uri.encode(room.name)}")
+                },
+                onAddContact = { navController.navigate("add_contact") }
+                // Chức năng tạo nhóm hiện tại đã được tích hợp gọi trực tiếp chatViewModel.createNewGroup
+                // bên trong NewMessageScreen nên không cần truyền onCreateGroup qua param nếu bạn đã sửa file theo hướng đó.
+            )
+        }
+
+        // ROUTE CHAT 1-1
+        composable(
+            route = "chat/{roomId}/{roomName}",
+            arguments = listOf(
+                navArgument("roomId") { type = NavType.StringType },
+                navArgument("roomName") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+            ChatScreenImprovedScreen(
+                roomId = backStackEntry.arguments?.getString("roomId") ?: "",
+                roomName = Uri.decode(backStackEntry.arguments?.getString("roomName") ?: "Chat"),
+                viewModel = chatViewModel,
+                onBack = { navController.popBackStack() }
+            )
+        }
+
+        // ROUTE CHAT NHÓM (Bổ sung để hết lỗi khi tạo nhóm xong)
+        composable(
+            route = "group/{roomId}/{roomName}/{memberCount}",
+            arguments = listOf(
+                navArgument("roomId") { type = NavType.StringType },
+                navArgument("roomName") { type = NavType.StringType },
+                navArgument("memberCount") { type = NavType.IntType }
+            )
+        ) { backStackEntry ->
+            GroupChatScreen(
+                roomId = backStackEntry.arguments?.getString("roomId") ?: "",
+                roomName = Uri.decode(backStackEntry.arguments?.getString("roomName") ?: "Nhóm"),
+                viewModel = chatViewModel,
+                onBack = { navController.popBackStack() }
+            )
+        }
+
         composable("profile") {
             ProfileScreen(
                 onBack = { navController.popBackStack() },
                 onLogout = {
-                    with(sharedPref.edit()) {
-                        clear()
-                        apply()
-                    }
+                    with(sharedPref.edit()) { clear(); apply() }
                     chatViewModel.disconnect()
-                    navController.navigate("login") {
-                        popUpTo(0) { inclusive = true }
-                    }
+                    navController.navigate("login") { popUpTo(0) { inclusive = true } }
                 }
             )
         }
@@ -128,38 +170,6 @@ fun AppNavigation() {
         composable("add_contact") {
             AddNewContactScreen(
                 viewModel = contactViewModel,
-                onBack = { navController.popBackStack() }
-            )
-        }
-
-        composable("new_message") {
-            NewMessageScreen(
-                chatViewModel = chatViewModel,
-                contactViewModel = contactViewModel,
-                onBack = { navController.popBackStack() },
-                onUserSelected = { user ->
-                    val room = chatViewModel.startPrivateChat(user)
-                    navController.navigate("chat/${room.id}/${Uri.encode(room.name)}")
-                },
-                onAddContact = { navController.navigate("add_contact") },
-                onCreateGroup = { name, ids ->
-                    val room = chatViewModel.createGroup(name, ids)
-                    navController.navigate("group/${room.id}/${Uri.encode(room.name)}/${ids.size + 1}")
-                }
-            )
-        }
-
-        composable(
-            route = "chat/{roomId}/{roomName}",
-            arguments = listOf(
-                navArgument("roomId") { type = NavType.StringType },
-                navArgument("roomName") { type = NavType.StringType }
-            )
-        ) { backStackEntry ->
-            ChatScreenImprovedScreen(
-                roomId = backStackEntry.arguments?.getString("roomId") ?: "",
-                roomName = Uri.decode(backStackEntry.arguments?.getString("roomName") ?: "Chat"),
-                viewModel = chatViewModel,
                 onBack = { navController.popBackStack() }
             )
         }

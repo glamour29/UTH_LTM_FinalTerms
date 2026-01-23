@@ -87,6 +87,20 @@ class ChatViewModel(
             type = "TEXT"
         )
     }
+    fun createNewGroup(name: String, selectedMemberIds: List<String>) {
+        // Luôn thêm chính mình vào danh sách thành viên nhóm
+        val finalMembers = selectedMemberIds.toMutableList().apply {
+            if (!contains(currentUserId)) add(currentUserId)
+        }
+
+        repository.createChatGroup(name, finalMembers)
+
+        // Đợi một chút để server xử lý xong rồi làm mới danh sách phòng
+        viewModelScope.launch {
+            kotlinx.coroutines.delay(800)
+            refreshRooms()
+        }
+    }
 
     // Gửi tin nhắn hình ảnh
     fun sendImage(context: Context, uri: Uri) {

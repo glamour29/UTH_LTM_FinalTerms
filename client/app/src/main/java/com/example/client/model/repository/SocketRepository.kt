@@ -200,6 +200,17 @@ class SocketRepository(
         socket?.emit("create_group", payload)
         return ChatRoom(id = "temp", name = name, isGroup = true)
     }
+    // Thêm vào SocketRepository.kt
+    fun createChatGroup(name: String, memberIds: List<String>) {
+        val payload = JSONObject().apply {
+            put("name", name)
+            put("members", JSONArray(memberIds))
+            put("isGroup", true)
+        }
+        // Gửi sự kiện tạo nhóm tới Server
+        socket?.emit("create_group", payload)
+        Log.d("SocketRepo", "Đã gửi yêu cầu tạo nhóm mới: $name")
+    }
     fun leaveRoom(roomId: String) = socket?.emit("leave_room", JSONObject().put("roomId", roomId))
     fun pinRoom(roomId: String) = socket?.emit("pin_room", JSONObject().put("roomId", roomId))
     fun muteRoom(roomId: String) = socket?.emit("mute_room", JSONObject().put("roomId", roomId))
